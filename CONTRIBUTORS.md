@@ -24,6 +24,27 @@ All contributors who submit valid pull requests will be acknowledged here.
 
 (Your name will appear here once your contribution is merged.)
 
+## Contributors
+
+- **Vaibhav Singh** (@vaibhavsingh056)
+  Role: Backend Contributor  
+  Contribution:
+  - Assisted in retry mechanism logic
+  - Improved error handling in API service
+
+- **Utkarsh Upadhyay**
+  Role: Documentation Contributor  
+  Contribution:
+  - Helped write project documentation
+  - Reviewed architecture explanations
+
+- **Vaishnavi Rajpoot**
+  Role: Testing & QA Contributor  
+  Contribution:
+  - Tested DLQ replay workflow
+  - Reported edge-case failures
+
+
 ---
 
 ## How to Become a Contributor
