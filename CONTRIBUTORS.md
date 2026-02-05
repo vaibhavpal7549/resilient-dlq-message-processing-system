@@ -26,7 +26,7 @@ All contributors who submit valid pull requests will be acknowledged here.
 
 ## Contributors
 
-- **Vaibhav Singh** [@amitkumar-dev](https://github.com/amitkumar-dev)
+- **Vaibhav Singh** [@vaibhavsingh056](https://github.com/vaibhavsingh056)
   Role: Backend Contributor  
   Contribution:
   - Assisted in retry mechanism logic
