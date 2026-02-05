@@ -27,18 +27,21 @@ All contributors who submit valid pull requests will be acknowledged here.
 ## Contributors
 
 - **Vaibhav Singh** [@vaibhavsingh056](https://github.com/vaibhavsingh056)
+
   Role: Backend Contributor  
   Contribution:
   - Assisted in retry mechanism logic
   - Improved error handling in API service
 
 - **Utkarsh Upadhyay**
+
   Role: Documentation Contributor  
   Contribution:
   - Helped write project documentation
   - Reviewed architecture explanations
 
 - **Vaishnavi Rajpoot**
+
   Role: Testing & QA Contributor  
   Contribution:
   - Tested DLQ replay workflow
