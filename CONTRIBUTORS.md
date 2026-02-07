@@ -33,7 +33,7 @@ All contributors who submit valid pull requests will be acknowledged here.
   - Assisted in retry mechanism logic
   - Improved error handling in API service
 
-- **Utkarsh Upadhyay** [@utkarshupadhyay249](https://github.com/utkarshupadhyay249)
+- **Utkarsh Upadhyay** [@utkarshupadhyay249-commits](https://github.com/utkarshupadhyay249-commits)
 
   Role: Documentation Contributor  
   Contribution:
