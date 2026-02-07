@@ -33,14 +33,14 @@ All contributors who submit valid pull requests will be acknowledged here.
   - Assisted in retry mechanism logic
   - Improved error handling in API service
 
-- **Utkarsh Upadhyay**
+- **Utkarsh Upadhyay** [@utkarshupadhyay249](https://github.com/utkarshupadhyay249)
 
   Role: Documentation Contributor  
   Contribution:
   - Helped write project documentation
   - Reviewed architecture explanations
 
-- **Vaishnavi Rajpoot**
+- **Vaishnavi Rajpoot** [@Vaishnavi-18110](https://github.com/Vaishnavi-18110)
 
   Role: Testing & QA Contributor  
   Contribution:
