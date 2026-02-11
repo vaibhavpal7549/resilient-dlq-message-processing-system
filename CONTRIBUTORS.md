@@ -50,11 +50,11 @@ All contributors who submit valid pull requests will be acknowledged here.
 - **Vaishnavi Rajpoot** [@Vaishnavi-18110](https://github.com/Vaishnavi-18110)
  
   Contribution: Frontend + Monitoring + Documentation
- - Simple UI to view DLQ messages
-- API to fetch DLQ data
-- Status dashboard (failed / retried / resolved)
-- README + diagrams explanation
-- API documentation
+  - Simple UI to view DLQ messages
+  - API to fetch DLQ data
+  - Status dashboard (failed / retried / resolved)
+  - README + diagrams explanation
+  - API documentation
 
 ---
 
