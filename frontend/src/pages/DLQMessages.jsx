@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { dlqAPI } from '../services/api';
+import { 
+  Search, 
+  Filter, 
+  RefreshCw, 
+  Play, 
+  Eye,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
 
 export default function DLQMessages() {
   const [messages, setMessages] = useState([]);
@@ -24,7 +37,6 @@ export default function DLQMessages() {
         ...filters
       };
       
-      // Remove empty filters
       Object.keys(params).forEach(key => {
         if (params[key] === '') delete params[key];
       });
@@ -57,22 +69,39 @@ export default function DLQMessages() {
   };
 
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8">DLQ Messages</h1>
+    <div className="min-h-screen bg-slate-900">
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Page Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white mb-2">DLQ Messages</h1>
+          <p className="text-slate-400">View and manage messages in the Dead Letter Queue</p>
+        </div>
 
-        {/* Filters */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Filters</h2>
+        {/* Filters and Actions */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-slate-400" />
+              <h2 className="text-lg font-semibold text-white">Filters</h2>
+            </div>
+            <button
+              onClick={fetchMessages}
+              className="flex items-center gap-2 px-4 py-2 text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="text-sm font-medium">Refresh</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-white/80 text-sm mb-2">Status</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:border-white/40"
+                className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 text-white"
               >
-                <option value="">All</option>
+                <option value="">All Statuses</option>
                 <option value="dlq_pending">Pending</option>
                 <option value="dlq_processing">Processing</option>
                 <option value="dlq_resolved">Resolved</option>
@@ -82,78 +111,116 @@ export default function DLQMessages() {
             </div>
 
             <div>
-              <label className="block text-white/80 text-sm mb-2">Error Type</label>
-              <input
-                type="text"
-                value={filters.errorType}
-                onChange={(e) => handleFilterChange('errorType', e.target.value)}
-                placeholder="e.g., TIMEOUT_ERROR"
-                className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:border-white/40 placeholder-white/40"
-              />
+              <label className="block text-sm font-medium text-slate-300 mb-2">Error Type</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={filters.errorType}
+                  onChange={(e) => handleFilterChange('errorType', e.target.value)}
+                  placeholder="e.g., TIMEOUT_ERROR"
+                  className="w-full pl-10 pr-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 text-white placeholder-slate-500"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-white/80 text-sm mb-2">Source</label>
-              <input
-                type="text"
-                value={filters.source}
-                onChange={(e) => handleFilterChange('source', e.target.value)}
-                placeholder="e.g., api"
-                className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:border-white/40 placeholder-white/40"
-              />
+              <label className="block text-sm font-medium text-slate-300 mb-2">Source</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={filters.source}
+                  onChange={(e) => handleFilterChange('source', e.target.value)}
+                  placeholder="e.g., api"
+                  className="w-full pl-10 pr-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 text-white placeholder-slate-500"
+                />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Messages Table */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl overflow-hidden">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-white">Loading...</div>
+            <div className="p-12 text-center">
+              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-slate-400">Loading messages...</p>
+            </div>
           ) : messages.length === 0 ? (
-            <div className="p-8 text-center text-white/60">No messages found</div>
+            <div className="p-12 text-center">
+              <AlertCircle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-300 font-medium">No messages found</p>
+              <p className="text-slate-500 text-sm mt-1">Try adjusting your filters</p>
+            </div>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-white/5">
+                  <thead className="bg-slate-900/50 border-b border-slate-700">
                     <tr>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Message ID</th>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Error Type</th>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Status</th>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Retries</th>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Created</th>
-                      <th className="px-6 py-4 text-left text-white font-semibold">Actions</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Message ID
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Error Type
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Retries
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Created
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-700">
                     {messages.map((msg) => (
-                      <tr key={msg._id} className="border-t border-white/10 hover:bg-white/5">
+                      <tr key={msg._id} className="hover:bg-slate-700/50 transition-colors">
                         <td className="px-6 py-4">
-                          <span className="text-white font-mono text-sm">{msg.messageId}</span>
+                          <code className="text-sm font-mono text-blue-400 bg-slate-900 px-2 py-1 rounded">
+                            {msg.messageId.substring(0, 12)}...
+                          </code>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-orange-300 text-sm">{msg.errorType}</span>
+                          <span className="inline-flex items-center gap-1 text-sm text-red-400 bg-red-900/20 px-2 py-1 rounded">
+                            <XCircle className="w-3 h-3" />
+                            {msg.errorType}
+                          </span>
                         </td>
                         <td className="px-6 py-4">
                           <StatusBadge status={msg.status} />
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-white/80">{msg.retryCount}</span>
+                          <span className="text-sm text-slate-300 font-medium">{msg.retryCount}</span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-white/60 text-sm">
+                          <div className="flex items-center gap-1 text-sm text-slate-400">
+                            <Clock className="w-3 h-3" />
                             {new Date(msg.createdAt).toLocaleString()}
-                          </span>
+                          </div>
                         </td>
                         <td className="px-6 py-4">
-                          {msg.status === 'dlq_pending' && (
-                            <button
-                              onClick={() => handleReplay(msg._id)}
-                              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-                            >
-                              Replay
+                          <div className="flex items-center gap-2">
+                            {msg.status === 'dlq_pending' && (
+                              <button
+                                onClick={() => handleReplay(msg._id)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                              >
+                                <Play className="w-3 h-3" />
+                                Replay
+                              </button>
+                            )}
+                            <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium rounded-lg transition-colors">
+                              <Eye className="w-3 h-3" />
+                              Inspect
                             </button>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -162,27 +229,31 @@ export default function DLQMessages() {
               </div>
 
               {/* Pagination */}
-              <div className="px-6 py-4 bg-white/5 flex items-center justify-between">
-                <div className="text-white/60 text-sm">
-                  Showing {messages.length} of {pagination.total} messages
+              <div className="px-6 py-4 bg-slate-900/50 border-t border-slate-700 flex items-center justify-between">
+                <div className="text-sm text-slate-400">
+                  Showing <span className="font-medium text-white">{messages.length}</span> of{' '}
+                  <span className="font-medium text-white">{pagination.total}</span> messages
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
                     disabled={pagination.page === 1}
-                    className="px-4 py-2 bg-white/10 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition"
+                    className="inline-flex items-center gap-1 px-4 py-2 bg-slate-700 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
+                    <ChevronLeft className="w-4 h-4" />
                     Previous
                   </button>
-                  <span className="px-4 py-2 text-white">
-                    Page {pagination.page} of {pagination.pages}
+                  <span className="px-4 py-2 text-sm text-slate-300">
+                    Page <span className="font-medium text-white">{pagination.page}</span> of{' '}
+                    <span className="font-medium text-white">{pagination.pages}</span>
                   </span>
                   <button
                     onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                     disabled={pagination.page >= pagination.pages}
-                    className="px-4 py-2 bg-white/10 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition"
+                    className="inline-flex items-center gap-1 px-4 py-2 bg-slate-700 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Next
+                    <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -195,17 +266,50 @@ export default function DLQMessages() {
 }
 
 function StatusBadge({ status }) {
-  const colors = {
-    dlq_pending: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
-    dlq_processing: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    dlq_resolved: 'bg-green-500/20 text-green-300 border-green-500/30',
-    dlq_failed: 'bg-red-500/20 text-red-300 border-red-500/30',
-    dlq_manual: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+  const statusConfig = {
+    dlq_pending: {
+      bg: 'bg-yellow-900/30',
+      text: 'text-yellow-400',
+      border: 'border-yellow-700',
+      icon: <Clock className="w-3 h-3" />,
+      label: 'Pending'
+    },
+    dlq_processing: {
+      bg: 'bg-blue-900/30',
+      text: 'text-blue-400',
+      border: 'border-blue-700',
+      icon: <RefreshCw className="w-3 h-3" />,
+      label: 'Processing'
+    },
+    dlq_resolved: {
+      bg: 'bg-green-900/30',
+      text: 'text-green-400',
+      border: 'border-green-700',
+      icon: <CheckCircle2 className="w-3 h-3" />,
+      label: 'Resolved'
+    },
+    dlq_failed: {
+      bg: 'bg-red-900/30',
+      text: 'text-red-400',
+      border: 'border-red-700',
+      icon: <XCircle className="w-3 h-3" />,
+      label: 'Failed'
+    },
+    dlq_manual: {
+      bg: 'bg-purple-900/30',
+      text: 'text-purple-400',
+      border: 'border-purple-700',
+      icon: <AlertCircle className="w-3 h-3" />,
+      label: 'Manual'
+    }
   };
 
+  const config = statusConfig[status] || statusConfig.dlq_pending;
+
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${colors[status] || 'bg-gray-500/20 text-gray-300'}`}>
-      {status.replace('dlq_', '').toUpperCase()}
+    <span className={`inline-flex items-center gap-1 ${config.bg} ${config.text} border ${config.border} px-2.5 py-1 rounded-md text-xs font-semibold`}>
+      {config.icon}
+      {config.label}
     </span>
   );
 }

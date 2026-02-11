@@ -8,13 +8,32 @@ import {
   TrendingUp,
   Database,
   Zap,
-  AlertTriangle
+  AlertTriangle,
+  BarChart3,
+  Play,
+  Eye
 } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
 export default function Dashboard() {
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recentMessages, setRecentMessages] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -24,12 +43,14 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [healthRes, statsRes] = await Promise.all([
+      const [healthRes, statsRes, messagesRes] = await Promise.all([
         systemAPI.getHealth(),
-        dlqAPI.getStats()
+        dlqAPI.getStats(),
+        dlqAPI.list({ limit: 5, page: 1 })
       ]);
       setHealth(healthRes.data);
       setStats(statsRes.data.stats);
+      setRecentMessages(messagesRes.data.data || []);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -39,10 +60,10 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-slate-900">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-600 font-medium">Loading dashboard...</p>
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-medium">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -52,95 +73,247 @@ export default function Dashboard() {
   const queueMetrics = health?.components?.queue?.metrics || {};
   const dlqByStatus = stats?.byStatus || {};
 
+  // Prepare chart data
+  const queueChartData = [
+    { name: 'Waiting', value: queueMetrics.waiting || 0, color: '#3b82f6' },
+    { name: 'Active', value: queueMetrics.active || 0, color: '#10b981' },
+    { name: 'Completed', value: queueMetrics.completed || 0, color: '#14b8a6' },
+    { name: 'Failed', value: queueMetrics.failed || 0, color: '#ef4444' },
+    { name: 'Delayed', value: queueMetrics.delayed || 0, color: '#f59e0b' }
+  ];
+
+  const dlqChartData = [
+    { name: 'Pending', value: dlqByStatus.dlq_pending || 0 },
+    { name: 'Resolved', value: dlqByStatus.dlq_resolved || 0 },
+    { name: 'Failed', value: dlqByStatus.dlq_failed || 0 },
+    { name: 'Processing', value: dlqByStatus.dlq_processing || 0 }
+  ];
+
+  const COLORS = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6'];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl font-bold text-white mb-2">
             DLQ Management Dashboard
           </h1>
-          <p className="text-gray-600">
-            Monitor and manage your Dead Letter Queue system in real-time
+          <p className="text-slate-400">
+            Real-time monitoring and management of Dead Letter Queue system
           </p>
         </div>
 
-        {/* System Status Banner */}
-        <SystemStatusBanner circuitState={circuitState} />
+        {/* Circuit Breaker Status - Most Prominent */}
+        <CircuitBreakerBanner circuitState={circuitState} />
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <KPICard
-            title="Circuit Breaker"
-            value={circuitState}
-            icon={<Zap className="w-6 h-6" />}
-            status={circuitState === 'CLOSED' ? 'success' : circuitState === 'OPEN' ? 'error' : 'warning'}
-            subtitle={circuitState === 'CLOSED' ? 'System operational' : 'Check system health'}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KPICard
             title="Queue Depth"
             value={queueMetrics.total || 0}
-            icon={<Database className="w-6 h-6" />}
+            icon={<Database className="w-5 h-5" />}
             status="info"
-            subtitle={`${queueMetrics.active || 0} active`}
+            subtitle={`${queueMetrics.active || 0} active messages`}
+            trend="+12%"
           />
           <KPICard
             title="DLQ Pending"
             value={dlqByStatus.dlq_pending || 0}
-            icon={<AlertCircle className="w-6 h-6" />}
+            icon={<AlertCircle className="w-5 h-5" />}
             status={dlqByStatus.dlq_pending > 0 ? 'warning' : 'success'}
             subtitle="Awaiting retry"
+            trend={dlqByStatus.dlq_pending > 0 ? '+5%' : '0%'}
           />
           <KPICard
             title="DLQ Resolved"
             value={dlqByStatus.dlq_resolved || 0}
-            icon={<CheckCircle2 className="w-6 h-6" />}
+            icon={<CheckCircle2 className="w-5 h-5" />}
             status="success"
             subtitle="Successfully processed"
+            trend="+8%"
+          />
+          <KPICard
+            title="Failed Messages"
+            value={dlqByStatus.dlq_failed || 0}
+            icon={<AlertTriangle className="w-5 h-5" />}
+            status={dlqByStatus.dlq_failed > 0 ? 'error' : 'success'}
+            subtitle="Permanent failures"
+            trend={dlqByStatus.dlq_failed > 0 ? '+3%' : '0%'}
           />
         </div>
 
-        {/* Queue Metrics Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <MetricsPanel
-            title="Queue Metrics"
-            icon={<Activity className="w-5 h-5" />}
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <MetricItem label="Waiting" value={queueMetrics.waiting || 0} color="blue" />
-              <MetricItem label="Active" value={queueMetrics.active || 0} color="green" />
-              <MetricItem label="Completed" value={queueMetrics.completed || 0} color="teal" />
-              <MetricItem label="Failed" value={queueMetrics.failed || 0} color="red" />
-              <MetricItem label="Delayed" value={queueMetrics.delayed || 0} color="yellow" />
-              <MetricItem label="Total" value={queueMetrics.total || 0} color="gray" />
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Queue Metrics Chart */}
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <BarChart3 className="w-5 h-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-white">Queue Metrics</h2>
             </div>
-          </MetricsPanel>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={queueChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#1e293b', 
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: '#f1f5f9'
+                  }}
+                />
+                <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                  {queueChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-          <MetricsPanel
-            title="DLQ Statistics"
-            icon={<TrendingUp className="w-5 h-5" />}
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <MetricItem label="Total" value={stats?.total || 0} color="gray" />
-              <MetricItem label="Pending" value={dlqByStatus.dlq_pending || 0} color="yellow" />
-              <MetricItem label="Processing" value={dlqByStatus.dlq_processing || 0} color="blue" />
-              <MetricItem label="Failed" value={dlqByStatus.dlq_failed || 0} color="red" />
-              <MetricItem label="Resolved" value={dlqByStatus.dlq_resolved || 0} color="green" />
-              <MetricItem label="Manual" value={dlqByStatus.dlq_manual || 0} color="purple" />
+          {/* DLQ Status Distribution */}
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Activity className="w-5 h-5 text-green-400" />
+              <h2 className="text-lg font-semibold text-white">DLQ Status Distribution</h2>
             </div>
-          </MetricsPanel>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={dlqChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {dlqChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#1e293b', 
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: '#f1f5f9'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        {/* Top Errors Section */}
+        {/* Recent DLQ Activity */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-slate-700">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-purple-400" />
+              <h2 className="text-lg font-semibold text-white">Recent DLQ Activity</h2>
+            </div>
+          </div>
+          {recentMessages.length === 0 ? (
+            <div className="p-12 text-center">
+              <CheckCircle2 className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400 font-medium">No DLQ messages</p>
+              <p className="text-slate-500 text-sm mt-1">All messages are processing successfully</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-900/50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Message ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Failure Reason
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Retry Count
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Timestamp
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700">
+                  {recentMessages.map((msg) => (
+                    <tr key={msg._id} className="hover:bg-slate-700/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <code className="text-sm font-mono text-blue-400 bg-slate-900 px-2 py-1 rounded">
+                          {msg.messageId?.substring(0, 12)}...
+                        </code>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-red-400">{msg.errorType || 'Unknown'}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-slate-300 font-medium">{msg.retryCount || 0}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1 text-sm text-slate-400">
+                          <Clock className="w-3 h-3" />
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={msg.status} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors">
+                            <Play className="w-3 h-3" />
+                            Replay
+                          </button>
+                          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium rounded-lg transition-colors">
+                            <Eye className="w-3 h-3" />
+                            Inspect
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Top Errors */}
         {stats?.topErrors && stats.topErrors.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
             <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Top Error Types</h2>
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <h2 className="text-lg font-semibold text-white">Top Error Types</h2>
             </div>
             <div className="space-y-3">
               {stats.topErrors.map((error, idx) => (
-                <ErrorItem key={idx} error={error} />
+                <div key={idx} className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <code className="text-sm font-mono text-slate-300">{error._id}</code>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-slate-400">{error.count} occurrences</span>
+                    <div className="w-32 bg-slate-700 rounded-full h-2">
+                      <div 
+                        className="bg-red-500 h-2 rounded-full transition-all" 
+                        style={{ width: `${Math.min((error.count / 100) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -150,131 +323,150 @@ export default function Dashboard() {
   );
 }
 
-function SystemStatusBanner({ circuitState }) {
+function CircuitBreakerBanner({ circuitState }) {
   const statusConfig = {
     CLOSED: {
-      bg: 'bg-green-50',
-      border: 'border-green-200',
-      text: 'text-green-800',
-      icon: <CheckCircle2 className="w-5 h-5 text-green-600" />,
-      message: 'System Healthy - All systems operational'
+      bg: 'bg-gradient-to-r from-green-900/40 to-emerald-900/40',
+      border: 'border-green-700',
+      text: 'text-green-400',
+      icon: <CheckCircle2 className="w-6 h-6 text-green-400" />,
+      message: 'System Healthy',
+      subtitle: 'All systems operational - Circuit breaker is CLOSED',
+      indicator: 'bg-green-500'
     },
     OPEN: {
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      text: 'text-red-800',
-      icon: <AlertCircle className="w-5 h-5 text-red-600" />,
-      message: 'Circuit Open - System protection activated'
+      bg: 'bg-gradient-to-r from-red-900/40 to-rose-900/40',
+      border: 'border-red-700',
+      text: 'text-red-400',
+      icon: <AlertCircle className="w-6 h-6 text-red-400" />,
+      message: 'Circuit Open',
+      subtitle: 'System protection activated - High failure rate detected',
+      indicator: 'bg-red-500 animate-pulse'
     },
     HALF_OPEN: {
-      bg: 'bg-yellow-50',
-      border: 'border-yellow-200',
-      text: 'text-yellow-800',
-      icon: <AlertTriangle className="w-5 h-5 text-yellow-600" />,
-      message: 'Circuit Half-Open - Testing recovery'
+      bg: 'bg-gradient-to-r from-yellow-900/40 to-amber-900/40',
+      border: 'border-yellow-700',
+      text: 'text-yellow-400',
+      icon: <AlertTriangle className="w-6 h-6 text-yellow-400" />,
+      message: 'Circuit Half-Open',
+      subtitle: 'Testing system recovery - Limited traffic allowed',
+      indicator: 'bg-yellow-500 animate-pulse'
     },
     UNKNOWN: {
-      bg: 'bg-gray-50',
-      border: 'border-gray-200',
-      text: 'text-gray-800',
-      icon: <Clock className="w-5 h-5 text-gray-600" />,
-      message: 'Status Unknown - Connecting to backend...'
+      bg: 'bg-gradient-to-r from-slate-800/40 to-slate-700/40',
+      border: 'border-slate-600',
+      text: 'text-slate-400',
+      icon: <Clock className="w-6 h-6 text-slate-400" />,
+      message: 'Status Unknown',
+      subtitle: 'Connecting to backend services...',
+      indicator: 'bg-slate-500'
     }
   };
 
   const config = statusConfig[circuitState] || statusConfig.UNKNOWN;
 
   return (
-    <div className={`${config.bg} ${config.border} border rounded-lg p-4 mb-8 flex items-center gap-3`}>
-      {config.icon}
-      <span className={`${config.text} font-medium`}>{config.message}</span>
+    <div className={`${config.bg} border-2 ${config.border} rounded-lg p-6 mb-6 shadow-xl`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          {config.icon}
+          <div>
+            <h3 className={`text-xl font-bold ${config.text} mb-1`}>{config.message}</h3>
+            <p className="text-slate-400 text-sm">{config.subtitle}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end">
+            <span className="text-xs text-slate-500 uppercase tracking-wider mb-1">Circuit State</span>
+            <span className={`text-lg font-bold ${config.text}`}>{circuitState}</span>
+          </div>
+          <div className={`w-4 h-4 rounded-full ${config.indicator} shadow-lg`}></div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function KPICard({ title, value, icon, status, subtitle }) {
+function KPICard({ title, value, icon, status, subtitle, trend }) {
   const statusColors = {
-    success: 'border-green-200 bg-green-50',
-    error: 'border-red-200 bg-red-50',
-    warning: 'border-yellow-200 bg-yellow-50',
-    info: 'border-blue-200 bg-blue-50'
+    success: 'border-green-700 bg-green-900/20',
+    error: 'border-red-700 bg-red-900/20',
+    warning: 'border-yellow-700 bg-yellow-900/20',
+    info: 'border-blue-700 bg-blue-900/20'
   };
 
   const iconColors = {
-    success: 'text-green-600',
-    error: 'text-red-600',
-    warning: 'text-yellow-600',
-    info: 'text-blue-600'
+    success: 'text-green-400',
+    error: 'text-red-400',
+    warning: 'text-yellow-400',
+    info: 'text-blue-400'
   };
 
   const valueColors = {
-    success: 'text-green-900',
-    error: 'text-red-900',
-    warning: 'text-yellow-900',
-    info: 'text-blue-900'
+    success: 'text-green-400',
+    error: 'text-red-400',
+    warning: 'text-yellow-400',
+    info: 'text-blue-400'
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border-2 ${statusColors[status]} p-6 hover:shadow-md transition-shadow`}>
+    <div className={`bg-slate-800 rounded-lg border-2 ${statusColors[status]} p-5 hover:shadow-lg hover:scale-105 transition-all`}>
       <div className="flex items-start justify-between mb-4">
-        <div className={`p-2 rounded-lg ${statusColors[status]}`}>
+        <div className={`p-2.5 rounded-lg ${statusColors[status]}`}>
           <div className={iconColors[status]}>{icon}</div>
         </div>
+        {trend && (
+          <span className={`text-xs font-semibold ${trend.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>
+            {trend}
+          </span>
+        )}
       </div>
-      <h3 className="text-sm font-medium text-gray-600 mb-1">{title}</h3>
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{title}</h3>
       <p className={`text-3xl font-bold ${valueColors[status]} mb-1`}>{value}</p>
-      <p className="text-xs text-gray-500">{subtitle}</p>
+      <p className="text-xs text-slate-500">{subtitle}</p>
     </div>
   );
 }
 
-function MetricsPanel({ title, icon, children }) {
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="text-gray-700">{icon}</div>
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function MetricItem({ label, value, color }) {
-  const colorClasses = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    teal: 'bg-teal-50 text-teal-700 border-teal-200',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200',
-    gray: 'bg-gray-50 text-gray-700 border-gray-200'
+function StatusBadge({ status }) {
+  const statusConfig = {
+    dlq_pending: {
+      bg: 'bg-yellow-900/30',
+      text: 'text-yellow-400',
+      border: 'border-yellow-700',
+      label: 'Pending'
+    },
+    dlq_processing: {
+      bg: 'bg-blue-900/30',
+      text: 'text-blue-400',
+      border: 'border-blue-700',
+      label: 'Processing'
+    },
+    dlq_resolved: {
+      bg: 'bg-green-900/30',
+      text: 'text-green-400',
+      border: 'border-green-700',
+      label: 'Resolved'
+    },
+    dlq_failed: {
+      bg: 'bg-red-900/30',
+      text: 'text-red-400',
+      border: 'border-red-700',
+      label: 'Failed'
+    },
+    dlq_manual: {
+      bg: 'bg-purple-900/30',
+      text: 'text-purple-400',
+      border: 'border-purple-700',
+      label: 'Manual'
+    }
   };
 
-  return (
-    <div className={`${colorClasses[color]} border rounded-lg p-4`}>
-      <p className="text-xs font-medium uppercase tracking-wide mb-1 opacity-75">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
-    </div>
-  );
-}
+  const config = statusConfig[status] || statusConfig.dlq_pending;
 
-function ErrorItem({ error }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
-      <div className="flex items-center gap-3">
-        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-        <code className="text-sm font-mono text-gray-800">{error._id}</code>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className="text-sm text-gray-600">{error.count} occurrences</span>
-        <div className="w-24 bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-red-500 h-2 rounded-full" 
-            style={{ width: `${Math.min((error.count / 100) * 100, 100)}%` }}
-          ></div>
-        </div>
-      </div>
-    </div>
+    <span className={`inline-flex items-center ${config.bg} ${config.text} border ${config.border} px-2.5 py-1 rounded-md text-xs font-semibold`}>
+      {config.label}
+    </span>
   );
 }

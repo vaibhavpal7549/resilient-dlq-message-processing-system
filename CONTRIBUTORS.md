@@ -27,26 +27,34 @@ All contributors who submit valid pull requests will be acknowledged here.
 ## Contributors
 
 - **Vaibhav Singh** [@vaibhavsingh056](https://github.com/vaibhavsingh056)
-
-  Role: Backend Contributor  
-  Contribution:
-  - Assisted in retry mechanism logic
-  - Improved error handling in API service
+ 
+  Contribution: DLQ Worker & MongoDB Layer
+  - DLQ schema (MongoDB)
+  - Node.js DLQ worker service
+  - Fetch DLQ messages
+  - Extra retry + failure classification
+  - Logging (error reason, timestamps)
+  - Separate branch: dlq-worker
 
 - **Utkarsh Upadhyay** [@utkarshupadhyay249-commits](https://github.com/utkarshupadhyay249-commits)
-
-  Role: Documentation Contributor  
-  Contribution:
-  - Helped write project documentation
-  - Reviewed architecture explanations
+ 
+  Contribution: Circuit Breaker + Shell Scripts + Unix MQ
+  - Circuit breaker logic
+  - Failure rate calculation
+  - Blocking DLQ input when threshold exceeded
+  - Shell scripts for replay
+  - Unix message queue usage (basic)
+  - Branch: circuit-breaker-scripts
+  - Separate commits for: Circuit breaker , Replay scripts
 
 - **Vaishnavi Rajpoot** [@Vaishnavi-18110](https://github.com/Vaishnavi-18110)
-
-  Role: Testing & QA Contributor  
-  Contribution:
-  - Tested DLQ replay workflow
-  - Reported edge-case failures
-
+ 
+  Contribution: Frontend + Monitoring + Documentation
+ - Simple UI to view DLQ messages
+- API to fetch DLQ data
+- Status dashboard (failed / retried / resolved)
+- README + diagrams explanation
+- API documentation
 
 ---
 
