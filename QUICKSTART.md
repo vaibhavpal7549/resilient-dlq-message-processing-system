@@ -164,3 +164,5 @@ chmod +x scripts/replay-dlq.sh
 - Verify backend is running on port 3000
 - Check CORS settings
 - Update `VITE_API_URL` in frontend/.env if needed
+
+
