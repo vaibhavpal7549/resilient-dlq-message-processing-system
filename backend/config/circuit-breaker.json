@@ -1,0 +1,16 @@
+{
+  "failureThreshold": 0.5,
+  "timeWindowMs": 60000,
+  "minimumRequests": 10,
+  "openTimeoutMs": 30000,
+  "halfOpenMaxRequests": 10,
+  "halfOpenSuccessThreshold": 0.8,
+  "evaluationIntervalMs": 5000,
+  "alerting": {
+    "enabled": true,
+    "channels": ["console", "log"],
+    "alertOnTrip": true,
+    "alertOnClose": true
+  }
+}
+
