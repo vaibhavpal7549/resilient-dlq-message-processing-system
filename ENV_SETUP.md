@@ -140,7 +140,7 @@ PORT=3000
 
 # MongoDB - Production (use MongoDB Atlas or your hosted instance)
 #MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/dlq_system?retryWrites=true&w=majority
-MONGODB_URI=mongodb+srv://vaibhavpalinfo_db_user:n7SSZd6fe9gXbpZb@dlq-cluster.7aghd3o.mongodb.net/?appName=dlq-cluster
+MONGODB_URI=url
 MONGODB_POOL_SIZE=20
 
 # Redis - Production (use Redis Cloud or your hosted instance)
