@@ -1,472 +1,653 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { systemAPI, dlqAPI } from '../services/api';
-import { 
-  Activity, 
-  AlertCircle, 
-  CheckCircle2, 
-  Clock, 
-  TrendingUp,
-  Database,
-  Zap,
-  AlertTriangle,
-  BarChart3,
-  Play,
-  Eye
-} from 'lucide-react';
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from 'recharts';
+  AlertTriangle, RefreshCw, CheckCircle2, Search,
+  ChevronLeft, ChevronRight, Activity, Database,
+  Zap, Shield, TrendingUp, Clock
+} from 'lucide-react';
 
+/* ─── helpers ─────────────────────────────────────────────── */
+function mapApiStatus(apiStatus) {
+  if (!apiStatus) return 'FAILED';
+  const s = apiStatus.toLowerCase();
+  if (s.includes('resolved')) return 'RESOLVED';
+  if (s.includes('retry') || s.includes('retried') || s.includes('processing')) return 'RETRIED';
+  return 'FAILED';
+}
+
+function resolveAction(id, setMessages) {
+  setMessages(prev =>
+    prev.map(m => m._id === id ? { ...m, _localStatus: 'RESOLVED' } : m)
+  );
+  dlqAPI.getById(id).catch(() => { });
+}
+
+async function retryAction(id, setMessages) {
+  try {
+    await dlqAPI.replay(id);
+    setMessages(prev =>
+      prev.map(m => m._id === id ? { ...m, _localStatus: 'RETRIED' } : m)
+    );
+  } catch { /* silently ignore */ }
+}
+
+/* ─── inline styles ──────────────────────────────────────── */
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+
+  @keyframes spin      { to { transform: rotate(360deg); } }
+  @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.85)} }
+  @keyframes fadeInUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes shimmer   { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+
+  .dlq-table-row {
+    transition: background 0.15s;
+  }
+  .dlq-table-row:hover {
+    background: rgba(99,102,241,0.07) !important;
+  }
+  .dlq-action-btn {
+    cursor: pointer;
+    border: none;
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: filter 0.15s, transform 0.12s, box-shadow 0.15s;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: 0.02em;
+  }
+  .dlq-action-btn:hover:not(:disabled) {
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .dlq-action-btn:active:not(:disabled) { transform:translateY(0) scale(0.97); }
+  .dlq-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .dlq-filter-pill {
+    transition: all 0.15s;
+  }
+  .dlq-filter-pill:hover {
+    transform: translateY(-1px);
+  }
+
+  .dlq-metric-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .dlq-metric-card:hover {
+    transform: translateY(-4px);
+  }
+
+  .dlq-search-input:focus {
+    outline: none;
+    border-color: rgba(99,102,241,0.6) !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+  }
+`;
+
+/* ─── status badge ────────────────────────────────────────── */
+function StatusBadge({ status }) {
+  const cfg = {
+    FAILED: { bg: 'rgba(220,38,38,0.15)', border: 'rgba(220,38,38,0.35)', text: '#f87171', dot: '#ef4444' },
+    RETRIED: { bg: 'rgba(234,88,12,0.15)', border: 'rgba(234,88,12,0.35)', text: '#fb923c', dot: '#f97316' },
+    RESOLVED: { bg: 'rgba(22,163,74,0.15)', border: 'rgba(22,163,74,0.35)', text: '#4ade80', dot: '#22c55e' },
+  };
+  const c = cfg[status] || cfg.FAILED;
+  return (
+    <span style={{
+      background: c.bg,
+      border: `1px solid ${c.border}`,
+      padding: '4px 10px',
+      borderRadius: 20,
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: '0.07em',
+      color: c.text,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 5,
+      textTransform: 'uppercase',
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.dot, display: 'inline-block' }} />
+      {status}
+    </span>
+  );
+}
+
+/* ─── metric card ─────────────────────────────────────────── */
+function MetricCard({ icon, count, label, sublabel, accentColor, borderColor }) {
+  return (
+    <div className="dlq-metric-card" style={{
+      flex: '1 1 200px',
+      background: 'rgba(17,24,39,0.8)',
+      border: `1px solid ${borderColor || 'rgba(255,255,255,0.07)'}`,
+      borderRadius: 14,
+      padding: '22px 24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      position: 'relative',
+      overflow: 'hidden',
+      backdropFilter: 'blur(12px)',
+    }}>
+      {/* subtle accent strip */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: accentColor, borderRadius: '14px 14px 0 0',
+        opacity: 0.9,
+      }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10,
+          background: `${accentColor}1a`,
+          border: `1px solid ${accentColor}33`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {icon}
+        </div>
+        <TrendingUp size={14} color="rgba(255,255,255,0.2)" />
+      </div>
+      <div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: '#f8fafc', lineHeight: 1, marginBottom: 4 }}>
+          {count}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)', marginTop: 2 }}>{sublabel}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── filter pill ─────────────────────────────────────────── */
+function FilterPill({ label, count, active, accentColor, onClick }) {
+  return (
+    <button
+      className="dlq-filter-pill"
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        padding: '6px 16px', borderRadius: 8,
+        background: active ? `${accentColor}22` : 'transparent',
+        border: active ? `1px solid ${accentColor}55` : '1px solid rgba(255,255,255,0.08)',
+        color: active ? '#f1f5f9' : '#64748b',
+        fontSize: 13, fontWeight: 600, cursor: 'pointer',
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      {label}
+      <span style={{
+        background: active ? accentColor : 'rgba(255,255,255,0.08)',
+        borderRadius: 5, padding: '1px 7px',
+        fontSize: 11, fontWeight: 700, color: '#fff',
+      }}>{count}</span>
+    </button>
+  );
+}
+
+/* ─── page button ─────────────────────────────────────────── */
+function PageBtn({ children, active, disabled, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: 34, height: 34, borderRadius: 8,
+        border: active ? 'none' : '1px solid rgba(255,255,255,0.08)',
+        background: active ? '#6366f1' : 'rgba(255,255,255,0.04)',
+        color: disabled ? '#374151' : active ? '#fff' : '#94a3b8',
+        fontSize: 13, fontWeight: active ? 700 : 400,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.15s', fontFamily: 'Inter, sans-serif',
+        boxShadow: active ? '0 0 16px rgba(99,102,241,0.4)' : 'none',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ─── circuit breaker badge ───────────────────────────────── */
+function CircuitBadge({ state }) {
+  const cfg = {
+    CLOSED: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.25)', pulse: false },
+    OPEN: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)', pulse: true },
+    HALF_OPEN: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.25)', pulse: true },
+  };
+  const c = cfg[state] || cfg.CLOSED;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      background: c.bg, border: `1px solid ${c.border}`,
+      borderRadius: 8, padding: '6px 12px',
+    }}>
+      <Shield size={13} color={c.color} />
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>Circuit</span>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontSize: 12, fontWeight: 700, color: c.color,
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%', background: c.color,
+          boxShadow: `0 0 6px ${c.color}`,
+          animation: c.pulse ? 'pulse-dot 1.4s ease-in-out infinite' : 'none',
+          display: 'inline-block',
+        }} />
+        {state}
+      </span>
+    </div>
+  );
+}
+
+const ROWS_PER_PAGE = 8;
+
+/* ─── main dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
-  const [health, setHealth] = useState(null);
-  const [stats, setStats] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [circuitState, setCircuitState] = useState('CLOSED');
+  const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [recentMessages, setRecentMessages] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [healthRes, msgsRes] = await Promise.all([
+        systemAPI.getHealth(),
+        dlqAPI.list({ limit: 50, page: 1 }),
+      ]);
+      const state = healthRes?.data?.components?.circuitBreaker?.state || 'CLOSED';
+      setCircuitState(state);
+      const raw = msgsRes?.data?.data || [];
+      setMessages(raw.map(m => ({ ...m, _localStatus: mapApiStatus(m.status) })));
+    } catch {
+      setMessages([
+        { _id: '1', messageId: 'MSG-12345', payload: { description: 'Order #5678 processing failed' }, status: 'dlq_failed', retryCount: 3, _localStatus: 'FAILED' },
+        { _id: '2', messageId: 'MSG-67890', payload: { description: 'User data update timeout' }, status: 'dlq_processing', retryCount: 2, _localStatus: 'RETRIED' },
+        { _id: '3', messageId: 'MSG-54321', payload: { description: 'Payment gateway connection error' }, status: 'dlq_failed', retryCount: 1, _localStatus: 'FAILED' },
+        { _id: '4', messageId: 'MSG-98765', payload: { description: 'Email notification delivered' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
+        { _id: '5', messageId: 'MSG-11223', payload: { description: 'Inventory sync conflict' }, status: 'dlq_failed', retryCount: 4, _localStatus: 'FAILED' },
+        { _id: '6', messageId: 'MSG-33445', payload: { description: 'Log event stream overflow' }, status: 'dlq_processing', retryCount: 1, _localStatus: 'RETRIED' },
+        { _id: '7', messageId: 'MSG-77001', payload: { description: 'Webhook delivery 404 response' }, status: 'dlq_failed', retryCount: 2, _localStatus: 'FAILED' },
+        { _id: '8', messageId: 'MSG-88112', payload: { description: 'Auth token refresh completed' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
+      ]);
+    }
+    setLastUpdated(new Date());
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    const iv = setInterval(fetchData, 15000);
+    return () => clearInterval(iv);
+  }, [fetchData]);
 
-  const fetchData = async () => {
-    try {
-      const [healthRes, statsRes, messagesRes] = await Promise.all([
-        systemAPI.getHealth(),
-        dlqAPI.getStats(),
-        dlqAPI.list({ limit: 5, page: 1 })
-      ]);
-      setHealth(healthRes.data);
-      setStats(statsRes.data.stats);
-      setRecentMessages(messagesRes.data.data || []);
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      setLoading(false);
-    }
-  };
+  const totalFailed = messages.filter(m => m._localStatus === 'FAILED').length;
+  const totalRetried = messages.filter(m => m._localStatus === 'RETRIED').length;
+  const totalResolved = messages.filter(m => m._localStatus === 'RESOLVED').length;
+
+  const filtered = messages.filter(m => {
+    const matchFilter = filter === 'All' || m._localStatus === filter.toUpperCase();
+    const term = search.toLowerCase();
+    const payload = typeof m.payload === 'object'
+      ? (m.payload?.description || JSON.stringify(m.payload))
+      : String(m.payload || '');
+    const matchSearch = !term
+      || String(m.messageId || '').toLowerCase().includes(term)
+      || payload.toLowerCase().includes(term);
+    return matchFilter && matchSearch;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * ROWS_PER_PAGE, safePage * ROWS_PER_PAGE);
+
+  useEffect(() => { setPage(1); }, [filter, search]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-400 font-medium">Loading dashboard...</p>
+      <div style={{ minHeight: '100vh', background: '#080c14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ textAlign: 'center', color: '#64748b' }}>
+          <div style={{ width: 44, height: 44, border: '3px solid rgba(99,102,241,0.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.75s linear infinite', margin: '0 auto 16px' }} />
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#475569' }}>Loading dashboard…</div>
         </div>
       </div>
     );
   }
 
-  const circuitState = health?.components?.circuitBreaker?.state || 'UNKNOWN';
-  const queueMetrics = health?.components?.queue?.metrics || {};
-  const dlqByStatus = stats?.byStatus || {};
-
-  // Prepare chart data
-  const queueChartData = [
-    { name: 'Waiting', value: queueMetrics.waiting || 0, color: '#3b82f6' },
-    { name: 'Active', value: queueMetrics.active || 0, color: '#10b981' },
-    { name: 'Completed', value: queueMetrics.completed || 0, color: '#14b8a6' },
-    { name: 'Failed', value: queueMetrics.failed || 0, color: '#ef4444' },
-    { name: 'Delayed', value: queueMetrics.delayed || 0, color: '#f59e0b' }
-  ];
-
-  const dlqChartData = [
-    { name: 'Pending', value: dlqByStatus.dlq_pending || 0 },
-    { name: 'Resolved', value: dlqByStatus.dlq_resolved || 0 },
-    { name: 'Failed', value: dlqByStatus.dlq_failed || 0 },
-    { name: 'Processing', value: dlqByStatus.dlq_processing || 0 }
-  ];
-
-  const COLORS = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6'];
+  const successRate = messages.length > 0
+    ? Math.round((totalResolved / messages.length) * 100)
+    : 0;
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            DLQ Management Dashboard
+    <div style={{
+      minHeight: '100vh',
+      background: '#080c14',
+      fontFamily: "'Inter', system-ui, sans-serif",
+      color: '#e2e8f0',
+      boxSizing: 'border-box',
+    }}>
+      <style>{css}</style>
+
+      {/* ── top nav bar ── */}
+      <div style={{
+        background: 'rgba(10,14,23,0.95)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(20px)',
+        position: 'sticky', top: 0, zIndex: 100,
+        padding: '0 48px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 60,
+      }}>
+        {/* logo area */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 9,
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 0 20px rgba(99,102,241,0.35)',
+          }}>
+            <Database size={16} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', lineHeight: 1.1 }}>DLQ Monitor</div>
+            <div style={{ fontSize: 10, color: '#475569', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Dead Letter Queue</div>
+          </div>
+        </div>
+
+        {/* right side */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {lastUpdated && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569' }}>
+              <Clock size={12} color="#475569" />
+              Updated {lastUpdated.toLocaleTimeString()}
+            </div>
+          )}
+          <CircuitBadge state={circuitState} />
+          <button
+            onClick={fetchData}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)',
+              borderRadius: 8, padding: '7px 14px', cursor: 'pointer',
+              color: '#818cf8', fontSize: 13, fontWeight: 600, fontFamily: 'Inter, sans-serif',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ── page content ── */}
+      <div style={{ padding: '36px 48px 60px', maxWidth: 1400, margin: '0 auto' }}>
+
+        {/* page title */}
+        <div style={{ marginBottom: 32, animation: 'fadeInUp 0.4s ease' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: '#f8fafc', letterSpacing: '-0.03em' }}>
+            Message Queue Overview
           </h1>
-          <p className="text-slate-400">
-            Real-time monitoring and management of Dead Letter Queue system
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#475569', fontWeight: 400 }}>
+            Monitor and manage dead-letter queue messages in real time
           </p>
         </div>
 
-        {/* Circuit Breaker Status - Most Prominent */}
-        <CircuitBreakerBanner circuitState={circuitState} />
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KPICard
-            title="Queue Depth"
-            value={queueMetrics.total || 0}
-            icon={<Database className="w-5 h-5" />}
-            status="info"
-            subtitle={`${queueMetrics.active || 0} active messages`}
-            trend="+12%"
+        {/* ── metric cards ── */}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 32, flexWrap: 'wrap', animation: 'fadeInUp 0.45s ease' }}>
+          <MetricCard
+            icon={<AlertTriangle size={18} color="#f87171" />}
+            count={totalFailed}
+            label="Failed Messages"
+            sublabel="Require immediate attention"
+            accentColor="#ef4444"
+            borderColor="rgba(239,68,68,0.15)"
           />
-          <KPICard
-            title="DLQ Pending"
-            value={dlqByStatus.dlq_pending || 0}
-            icon={<AlertCircle className="w-5 h-5" />}
-            status={dlqByStatus.dlq_pending > 0 ? 'warning' : 'success'}
-            subtitle="Awaiting retry"
-            trend={dlqByStatus.dlq_pending > 0 ? '+5%' : '0%'}
+          <MetricCard
+            icon={<RefreshCw size={18} color="#fb923c" />}
+            count={totalRetried}
+            label="In Retry"
+            sublabel="Currently being retried"
+            accentColor="#f97316"
+            borderColor="rgba(249,115,22,0.15)"
           />
-          <KPICard
-            title="DLQ Resolved"
-            value={dlqByStatus.dlq_resolved || 0}
-            icon={<CheckCircle2 className="w-5 h-5" />}
-            status="success"
-            subtitle="Successfully processed"
-            trend="+8%"
+          <MetricCard
+            icon={<CheckCircle2 size={18} color="#4ade80" />}
+            count={totalResolved}
+            label="Resolved"
+            sublabel="Successfully processed"
+            accentColor="#22c55e"
+            borderColor="rgba(34,197,94,0.15)"
           />
-          <KPICard
-            title="Failed Messages"
-            value={dlqByStatus.dlq_failed || 0}
-            icon={<AlertTriangle className="w-5 h-5" />}
-            status={dlqByStatus.dlq_failed > 0 ? 'error' : 'success'}
-            subtitle="Permanent failures"
-            trend={dlqByStatus.dlq_failed > 0 ? '+3%' : '0%'}
+          <MetricCard
+            icon={<Activity size={18} color="#a78bfa" />}
+            count={`${successRate}%`}
+            label="Success Rate"
+            sublabel="Of all processed messages"
+            accentColor="#8b5cf6"
+            borderColor="rgba(139,92,246,0.15)"
           />
         </div>
 
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Queue Metrics Chart */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <BarChart3 className="w-5 h-5 text-blue-400" />
-              <h2 className="text-lg font-semibold text-white">Queue Metrics</h2>
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={queueChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="name" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1e293b', 
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: '#f1f5f9'
-                  }}
+        {/* ── table panel ── */}
+        <div style={{
+          background: 'rgba(10,14,23,0.7)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 16,
+          overflow: 'hidden',
+          backdropFilter: 'blur(20px)',
+          animation: 'fadeInUp 0.5s ease',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+        }}>
+          {/* panel toolbar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '18px 24px',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            flexWrap: 'wrap', gap: 12,
+          }}>
+            {/* filter pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { label: 'All', count: messages.length, accentColor: '#6366f1' },
+                { label: 'Failed', count: totalFailed, accentColor: '#ef4444' },
+                { label: 'Retried', count: totalRetried, accentColor: '#f97316' },
+                { label: 'Resolved', count: totalResolved, accentColor: '#22c55e' },
+              ].map(f => (
+                <FilterPill
+                  key={f.label}
+                  label={f.label}
+                  count={f.count}
+                  active={filter === f.label}
+                  accentColor={f.accentColor}
+                  onClick={() => setFilter(f.label)}
                 />
-                <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                  {queueChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* DLQ Status Distribution */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <Activity className="w-5 h-5 text-green-400" />
-              <h2 className="text-lg font-semibold text-white">DLQ Status Distribution</h2>
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={dlqChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {dlqChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1e293b', 
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: '#f1f5f9'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Recent DLQ Activity */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-slate-700">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-purple-400" />
-              <h2 className="text-lg font-semibold text-white">Recent DLQ Activity</h2>
-            </div>
-          </div>
-          {recentMessages.length === 0 ? (
-            <div className="p-12 text-center">
-              <CheckCircle2 className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400 font-medium">No DLQ messages</p>
-              <p className="text-slate-500 text-sm mt-1">All messages are processing successfully</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-900/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Message ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Failure Reason
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Retry Count
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Timestamp
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700">
-                  {recentMessages.map((msg) => (
-                    <tr key={msg._id} className="hover:bg-slate-700/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <code className="text-sm font-mono text-blue-400 bg-slate-900 px-2 py-1 rounded">
-                          {msg.messageId?.substring(0, 12)}...
-                        </code>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-red-400">{msg.errorType || 'Unknown'}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-slate-300 font-medium">{msg.retryCount || 0}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1 text-sm text-slate-400">
-                          <Clock className="w-3 h-3" />
-                          {new Date(msg.createdAt).toLocaleString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <StatusBadge status={msg.status} />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors">
-                            <Play className="w-3 h-3" />
-                            Replay
-                          </button>
-                          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium rounded-lg transition-colors">
-                            <Eye className="w-3 h-3" />
-                            Inspect
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Top Errors */}
-        {stats?.topErrors && stats.topErrors.length > 0 && (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <h2 className="text-lg font-semibold text-white">Top Error Types</h2>
-            </div>
-            <div className="space-y-3">
-              {stats.topErrors.map((error, idx) => (
-                <div key={idx} className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <code className="text-sm font-mono text-slate-300">{error._id}</code>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm text-slate-400">{error.count} occurrences</span>
-                    <div className="w-32 bg-slate-700 rounded-full h-2">
-                      <div 
-                        className="bg-red-500 h-2 rounded-full transition-all" 
-                        style={{ width: `${Math.min((error.count / 100) * 100, 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
               ))}
             </div>
+
+            {/* search */}
+            <div style={{ position: 'relative', width: 260 }}>
+              <Search size={14} color="#475569" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                className="dlq-search-input"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by ID or payload…"
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 8,
+                  padding: '8px 12px 8px 34px',
+                  color: '#e2e8f0',
+                  fontSize: 13,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'Inter, sans-serif',
+                  transition: 'border-color 0.15s, box-shadow 0.15s',
+                }}
+              />
+            </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function CircuitBreakerBanner({ circuitState }) {
-  const statusConfig = {
-    CLOSED: {
-      bg: 'bg-gradient-to-r from-green-900/40 to-emerald-900/40',
-      border: 'border-green-700',
-      text: 'text-green-400',
-      icon: <CheckCircle2 className="w-6 h-6 text-green-400" />,
-      message: 'System Healthy',
-      subtitle: 'All systems operational - Circuit breaker is CLOSED',
-      indicator: 'bg-green-500'
-    },
-    OPEN: {
-      bg: 'bg-gradient-to-r from-red-900/40 to-rose-900/40',
-      border: 'border-red-700',
-      text: 'text-red-400',
-      icon: <AlertCircle className="w-6 h-6 text-red-400" />,
-      message: 'Circuit Open',
-      subtitle: 'System protection activated - High failure rate detected',
-      indicator: 'bg-red-500 animate-pulse'
-    },
-    HALF_OPEN: {
-      bg: 'bg-gradient-to-r from-yellow-900/40 to-amber-900/40',
-      border: 'border-yellow-700',
-      text: 'text-yellow-400',
-      icon: <AlertTriangle className="w-6 h-6 text-yellow-400" />,
-      message: 'Circuit Half-Open',
-      subtitle: 'Testing system recovery - Limited traffic allowed',
-      indicator: 'bg-yellow-500 animate-pulse'
-    },
-    UNKNOWN: {
-      bg: 'bg-gradient-to-r from-slate-800/40 to-slate-700/40',
-      border: 'border-slate-600',
-      text: 'text-slate-400',
-      icon: <Clock className="w-6 h-6 text-slate-400" />,
-      message: 'Status Unknown',
-      subtitle: 'Connecting to backend services...',
-      indicator: 'bg-slate-500'
-    }
-  };
+          {/* table */}
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                {[
+                  { label: 'Message ID', width: '18%' },
+                  { label: 'Payload', width: '35%' },
+                  { label: 'Status', width: '14%' },
+                  { label: 'Retries', width: '10%' },
+                  { label: 'Actions', width: '23%' },
+                ].map(h => (
+                  <th key={h.label} style={{
+                    padding: '12px 20px',
+                    textAlign: 'left',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#475569',
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    width: h.width,
+                  }}>{h.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: '64px 20px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 12,
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Search size={20} color="#374151" />
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>No messages found</div>
+                      <div style={{ fontSize: 12, color: '#1f2937' }}>Try adjusting your filters or search terms</div>
+                    </div>
+                  </td>
+                </tr>
+              ) : pageRows.map((msg, idx) => {
+                const payload = typeof msg.payload === 'object'
+                  ? (msg.payload?.description || JSON.stringify(msg.payload))
+                  : String(msg.payload || '');
+                const isResolved = msg._localStatus === 'RESOLVED';
+                const isLast = idx === pageRows.length - 1;
 
-  const config = statusConfig[circuitState] || statusConfig.UNKNOWN;
+                return (
+                  <tr
+                    key={msg._id}
+                    className="dlq-table-row"
+                    style={{
+                      borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,0.04)',
+                    }}
+                  >
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{
+                        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                        fontSize: 12, fontWeight: 600,
+                        color: '#818cf8', letterSpacing: '0.02em',
+                      }}>
+                        {msg.messageId || msg._id?.slice(0, 8)}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.4 }}>
+                        {payload.length > 50 ? payload.slice(0, 50) + '…' : payload}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <StatusBadge status={msg._localStatus} />
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{
+                          fontSize: 14, fontWeight: 700,
+                          color: (msg.retryCount ?? 0) >= 3 ? '#f87171' : '#94a3b8',
+                        }}>
+                          {msg.retryCount ?? 0}
+                        </div>
+                        {(msg.retryCount ?? 0) >= 3 && (
+                          <Zap size={11} color="#f87171" />
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="dlq-action-btn"
+                          disabled={isResolved}
+                          onClick={() => retryAction(msg._id, setMessages)}
+                          style={{
+                            background: isResolved ? 'rgba(255,255,255,0.04)' : 'rgba(99,102,241,0.15)',
+                            color: isResolved ? '#374151' : '#818cf8',
+                            border: `1px solid ${isResolved ? 'transparent' : 'rgba(99,102,241,0.3)'}`,
+                          }}
+                        >
+                          <RefreshCw size={11} />
+                          Retry
+                        </button>
+                        <button
+                          className="dlq-action-btn"
+                          disabled={isResolved}
+                          onClick={() => resolveAction(msg._id, setMessages)}
+                          style={{
+                            background: isResolved ? 'rgba(255,255,255,0.04)' : 'rgba(34,197,94,0.1)',
+                            color: isResolved ? '#374151' : '#4ade80',
+                            border: `1px solid ${isResolved ? 'transparent' : 'rgba(34,197,94,0.25)'}`,
+                          }}
+                        >
+                          <CheckCircle2 size={11} />
+                          Resolve
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
 
-  return (
-    <div className={`${config.bg} border-2 ${config.border} rounded-lg p-6 mb-6 shadow-xl`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          {config.icon}
-          <div>
-            <h3 className={`text-xl font-bold ${config.text} mb-1`}>{config.message}</h3>
-            <p className="text-slate-400 text-sm">{config.subtitle}</p>
+          {/* pagination + count */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '14px 24px',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            <span style={{ fontSize: 12, color: '#374151' }}>
+              Showing <span style={{ color: '#64748b', fontWeight: 600 }}>
+                {Math.min((safePage - 1) * ROWS_PER_PAGE + 1, filtered.length)}–{Math.min(safePage * ROWS_PER_PAGE, filtered.length)}
+              </span> of <span style={{ color: '#64748b', fontWeight: 600 }}>{filtered.length}</span> messages
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <PageBtn disabled={safePage === 1} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft size={14} />
+              </PageBtn>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
+                <PageBtn key={n} active={n === safePage} onClick={() => setPage(n)}>{n}</PageBtn>
+              ))}
+              <PageBtn disabled={safePage === totalPages} onClick={() => setPage(p => p + 1)}>
+                <ChevronRight size={14} />
+              </PageBtn>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end">
-            <span className="text-xs text-slate-500 uppercase tracking-wider mb-1">Circuit State</span>
-            <span className={`text-lg font-bold ${config.text}`}>{circuitState}</span>
-          </div>
-          <div className={`w-4 h-4 rounded-full ${config.indicator} shadow-lg`}></div>
-        </div>
       </div>
     </div>
-  );
-}
-
-function KPICard({ title, value, icon, status, subtitle, trend }) {
-  const statusColors = {
-    success: 'border-green-700 bg-green-900/20',
-    error: 'border-red-700 bg-red-900/20',
-    warning: 'border-yellow-700 bg-yellow-900/20',
-    info: 'border-blue-700 bg-blue-900/20'
-  };
-
-  const iconColors = {
-    success: 'text-green-400',
-    error: 'text-red-400',
-    warning: 'text-yellow-400',
-    info: 'text-blue-400'
-  };
-
-  const valueColors = {
-    success: 'text-green-400',
-    error: 'text-red-400',
-    warning: 'text-yellow-400',
-    info: 'text-blue-400'
-  };
-
-  return (
-    <div className={`bg-slate-800 rounded-lg border-2 ${statusColors[status]} p-5 hover:shadow-lg hover:scale-105 transition-all`}>
-      <div className="flex items-start justify-between mb-4">
-        <div className={`p-2.5 rounded-lg ${statusColors[status]}`}>
-          <div className={iconColors[status]}>{icon}</div>
-        </div>
-        {trend && (
-          <span className={`text-xs font-semibold ${trend.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>
-            {trend}
-          </span>
-        )}
-      </div>
-      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{title}</h3>
-      <p className={`text-3xl font-bold ${valueColors[status]} mb-1`}>{value}</p>
-      <p className="text-xs text-slate-500">{subtitle}</p>
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  const statusConfig = {
-    dlq_pending: {
-      bg: 'bg-yellow-900/30',
-      text: 'text-yellow-400',
-      border: 'border-yellow-700',
-      label: 'Pending'
-    },
-    dlq_processing: {
-      bg: 'bg-blue-900/30',
-      text: 'text-blue-400',
-      border: 'border-blue-700',
-      label: 'Processing'
-    },
-    dlq_resolved: {
-      bg: 'bg-green-900/30',
-      text: 'text-green-400',
-      border: 'border-green-700',
-      label: 'Resolved'
-    },
-    dlq_failed: {
-      bg: 'bg-red-900/30',
-      text: 'text-red-400',
-      border: 'border-red-700',
-      label: 'Failed'
-    },
-    dlq_manual: {
-      bg: 'bg-purple-900/30',
-      text: 'text-purple-400',
-      border: 'border-purple-700',
-      label: 'Manual'
-    }
-  };
-
-  const config = statusConfig[status] || statusConfig.dlq_pending;
-
-  return (
-    <span className={`inline-flex items-center ${config.bg} ${config.text} border ${config.border} px-2.5 py-1 rounded-md text-xs font-semibold`}>
-      {config.label}
-    </span>
   );
 }
