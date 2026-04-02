@@ -22,6 +22,7 @@ export const dlqAPI = {
   list: (params) => api.get('/api/dlq', { params }),
   getStats: () => api.get('/api/dlq/stats'),
   getById: (id) => api.get(`/api/dlq/${id}`),
+  resolve: (id, data = {}) => api.post(`/api/dlq/${id}/resolve`, data),
   replay: (id) => api.post(`/api/dlq/${id}/replay`),
   replayBatch: (data) => api.post('/api/dlq/replay-batch', data)
 };

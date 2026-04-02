@@ -11,25 +11,84 @@ function mapApiStatus(apiStatus) {
   if (!apiStatus) return 'FAILED';
   const s = apiStatus.toLowerCase();
   if (s.includes('resolved')) return 'RESOLVED';
-  if (s.includes('retry') || s.includes('retried') || s.includes('processing')) return 'RETRIED';
+  if (s.includes('retry') || s.includes('retried') || s.includes('replay') || s.includes('processing')) return 'RETRIED';
   return 'FAILED';
 }
 
-function resolveAction(id, setMessages) {
-  setMessages(prev =>
-    prev.map(m => m._id === id ? { ...m, _localStatus: 'RESOLVED' } : m)
-  );
-  dlqAPI.getById(id).catch(() => { });
+function applyLocalOverride(message, overrides) {
+  const override = overrides[message._id];
+  if (!override) return message;
+
+  return {
+    ...message,
+    ...override,
+    _localStatus: override._localStatus ?? message._localStatus
+  };
 }
 
-async function retryAction(id, setMessages) {
+async function resolveAction(id, setMessages, setLocalOverrides) {
+  const override = { status: 'dlq_resolved', _localStatus: 'RESOLVED' };
+  setLocalOverrides(prev => ({ ...prev, [id]: override }));
+  setMessages(prev =>
+    prev.map(m => m._id === id ? { ...m, ...override } : m)
+  );
+
   try {
-    await dlqAPI.replay(id);
-    setMessages(prev =>
-      prev.map(m => m._id === id ? { ...m, _localStatus: 'RETRIED' } : m)
-    );
+    const response = await dlqAPI.resolve(id, {
+      resolvedBy: 'dashboard',
+      notes: 'Resolved from dashboard'
+    });
+    const resolvedMessage = response?.data?.data;
+
+    if (resolvedMessage) {
+      const normalized = {
+        ...resolvedMessage,
+        payload: resolvedMessage.payload ?? resolvedMessage.originalMessage,
+        _localStatus: mapApiStatus(resolvedMessage.status)
+      };
+
+      setLocalOverrides(prev => ({ ...prev, [id]: normalized }));
+      setMessages(prev => prev.map(m => m._id === id ? { ...m, ...normalized } : m));
+    }
+  } catch {
+    // Keep optimistic UI state for demo/sample rows when backend data is unavailable.
+  }
+}
+
+async function retryAction(id, setMessages, setLocalOverrides) {
+  const retriedOverride = { status: 'dlq_processing', _localStatus: 'RETRIED' };
+  setLocalOverrides(prev => ({ ...prev, [id]: retriedOverride }));
+  setMessages(prev =>
+    prev.map(m => m._id === id ? { ...m, ...retriedOverride } : m)
+  );
+
+  try {
+    const response = await dlqAPI.replay(id);
+    const replayedMessage = response?.data?.data;
+
+    if (replayedMessage) {
+      const normalized = {
+        ...replayedMessage,
+        payload: replayedMessage.payload ?? replayedMessage.originalMessage,
+        _localStatus: mapApiStatus(replayedMessage.status)
+      };
+
+      setLocalOverrides(prev => ({ ...prev, [id]: normalized }));
+      setMessages(prev => prev.map(m => m._id === id ? { ...m, ...normalized } : m));
+    }
   } catch { /* silently ignore */ }
 }
+
+const SAMPLE_MESSAGES = [
+  { _id: '1', messageId: 'MSG-12345', payload: { description: 'Order #5678 processing failed' }, status: 'dlq_failed', retryCount: 3, _localStatus: 'FAILED' },
+  { _id: '2', messageId: 'MSG-67890', payload: { description: 'User data update timeout' }, status: 'dlq_processing', retryCount: 2, _localStatus: 'RETRIED' },
+  { _id: '3', messageId: 'MSG-54321', payload: { description: 'Payment gateway connection error' }, status: 'dlq_failed', retryCount: 1, _localStatus: 'FAILED' },
+  { _id: '4', messageId: 'MSG-98765', payload: { description: 'Email notification delivered' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
+  { _id: '5', messageId: 'MSG-11223', payload: { description: 'Inventory sync conflict' }, status: 'dlq_failed', retryCount: 4, _localStatus: 'FAILED' },
+  { _id: '6', messageId: 'MSG-33445', payload: { description: 'Log event stream overflow' }, status: 'dlq_processing', retryCount: 1, _localStatus: 'RETRIED' },
+  { _id: '7', messageId: 'MSG-77001', payload: { description: 'Webhook delivery 404 response' }, status: 'dlq_failed', retryCount: 2, _localStatus: 'FAILED' },
+  { _id: '8', messageId: 'MSG-88112', payload: { description: 'Auth token refresh completed' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
+];
 
 /* ─── inline styles ──────────────────────────────────────── */
 const css = `
@@ -250,6 +309,7 @@ const ROWS_PER_PAGE = 8;
 /* ─── main dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
   const [messages, setMessages] = useState([]);
+  const [localOverrides, setLocalOverrides] = useState({});
   const [circuitState, setCircuitState] = useState('CLOSED');
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -266,22 +326,19 @@ export default function Dashboard() {
       const state = healthRes?.data?.components?.circuitBreaker?.state || 'CLOSED';
       setCircuitState(state);
       const raw = msgsRes?.data?.data || [];
-      setMessages(raw.map(m => ({ ...m, _localStatus: mapApiStatus(m.status) })));
+      const normalized = raw.map(m => ({
+        ...m,
+        payload: m.payload ?? m.originalMessage,
+        _localStatus: mapApiStatus(m.status)
+      }));
+      const baseMessages = normalized.length > 0 ? normalized : SAMPLE_MESSAGES;
+      setMessages(baseMessages.map(message => applyLocalOverride(message, localOverrides)));
     } catch {
-      setMessages([
-        { _id: '1', messageId: 'MSG-12345', payload: { description: 'Order #5678 processing failed' }, status: 'dlq_failed', retryCount: 3, _localStatus: 'FAILED' },
-        { _id: '2', messageId: 'MSG-67890', payload: { description: 'User data update timeout' }, status: 'dlq_processing', retryCount: 2, _localStatus: 'RETRIED' },
-        { _id: '3', messageId: 'MSG-54321', payload: { description: 'Payment gateway connection error' }, status: 'dlq_failed', retryCount: 1, _localStatus: 'FAILED' },
-        { _id: '4', messageId: 'MSG-98765', payload: { description: 'Email notification delivered' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
-        { _id: '5', messageId: 'MSG-11223', payload: { description: 'Inventory sync conflict' }, status: 'dlq_failed', retryCount: 4, _localStatus: 'FAILED' },
-        { _id: '6', messageId: 'MSG-33445', payload: { description: 'Log event stream overflow' }, status: 'dlq_processing', retryCount: 1, _localStatus: 'RETRIED' },
-        { _id: '7', messageId: 'MSG-77001', payload: { description: 'Webhook delivery 404 response' }, status: 'dlq_failed', retryCount: 2, _localStatus: 'FAILED' },
-        { _id: '8', messageId: 'MSG-88112', payload: { description: 'Auth token refresh completed' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
-      ]);
+      setMessages(SAMPLE_MESSAGES.map(message => applyLocalOverride(message, localOverrides)));
     }
     setLastUpdated(new Date());
     setLoading(false);
-  }, []);
+  }, [localOverrides]);
 
   useEffect(() => {
     fetchData();
@@ -592,7 +649,7 @@ export default function Dashboard() {
                         <button
                           className="dlq-action-btn"
                           disabled={isResolved}
-                          onClick={() => retryAction(msg._id, setMessages)}
+                          onClick={() => retryAction(msg._id, setMessages, setLocalOverrides)}
                           style={{
                             background: isResolved ? 'rgba(255,255,255,0.04)' : 'rgba(99,102,241,0.15)',
                             color: isResolved ? '#374151' : '#818cf8',
@@ -605,7 +662,7 @@ export default function Dashboard() {
                         <button
                           className="dlq-action-btn"
                           disabled={isResolved}
-                          onClick={() => resolveAction(msg._id, setMessages)}
+                          onClick={() => resolveAction(msg._id, setMessages, setLocalOverrides)}
                           style={{
                             background: isResolved ? 'rgba(255,255,255,0.04)' : 'rgba(34,197,94,0.1)',
                             color: isResolved ? '#374151' : '#4ade80',

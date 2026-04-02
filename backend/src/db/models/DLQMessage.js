@@ -108,6 +108,8 @@ dlqMessageSchema.index({ errorType: 1, createdAt: -1 });
 // Instance methods
 dlqMessageSchema.methods.addReplayAttempt = function(attempt) {
   this.replayAttempts.push(attempt);
+  this.retryCount += 1;
+  this.dlqRetryCount += 1;
   return this.save();
 };
 

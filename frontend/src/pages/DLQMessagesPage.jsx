@@ -253,7 +253,7 @@ export default function DLQMessagesPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-red-600 dark:text-red-400 font-medium">
-                          {msg.errorType}
+                          {msg.errorType || 'Unknown'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -374,20 +374,20 @@ export default function DLQMessagesPage() {
               </div>
             </div>
 
-            {selectedMessage.payload && (
+            {selectedMessage.originalMessage && (
               <div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-2">Payload</p>
                 <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded text-xs overflow-auto text-gray-900 dark:text-gray-100 max-h-64">
-                  {JSON.stringify(selectedMessage.payload, null, 2)}
+                  {JSON.stringify(selectedMessage.originalMessage, null, 2)}
                 </pre>
               </div>
             )}
 
-            {selectedMessage.error && (
+            {(selectedMessage.errorReason || selectedMessage.errorStack) && (
               <div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-2">Error Details</p>
                 <pre className="bg-red-50 dark:bg-red-900/20 p-4 rounded text-xs text-red-700 dark:text-red-300 overflow-auto max-h-64">
-                  {selectedMessage.error}
+                  {[selectedMessage.errorReason, selectedMessage.errorStack].filter(Boolean).join('\n\n')}
                 </pre>
               </div>
             )}

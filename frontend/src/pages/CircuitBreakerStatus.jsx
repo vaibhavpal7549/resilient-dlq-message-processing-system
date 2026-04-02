@@ -59,8 +59,10 @@ export default function CircuitBreakerStatus() {
 
   const circuitBreaker = health?.components?.circuitBreaker || {};
   const state = circuitBreaker.state || 'UNKNOWN';
-  const failureRate = circuitBreaker.failureRate || 0;
-  const threshold = circuitBreaker.threshold || 50;
+  const rawFailureRate = circuitBreaker.failureRate || 0;
+  const failureRate = rawFailureRate <= 1 ? rawFailureRate * 100 : rawFailureRate;
+  const rawThreshold = circuitBreaker.metrics?.threshold ?? 50;
+  const threshold = rawThreshold <= 1 ? rawThreshold * 100 : rawThreshold;
   const metrics = circuitBreaker.metrics || {};
 
   const getStatusConfig = () => {
@@ -94,6 +96,16 @@ export default function CircuitBreakerStatus() {
         icon: <AlertTriangle className="w-16 h-16 text-amber-600 animate-pulse" />,
         message: 'Circuit Half-Open - Recovery Phase',
         description: 'System is testing recovery with limited traffic'
+      },
+      UNKNOWN: {
+        bg: 'bg-gray-50 dark:bg-gray-900/20',
+        border: 'border-gray-200 dark:border-gray-700',
+        text: 'text-gray-900 dark:text-gray-300',
+        statusBg: 'bg-gray-100 dark:bg-gray-800/30',
+        statusText: 'text-gray-700 dark:text-gray-400',
+        icon: <Clock className="w-16 h-16 text-gray-500" />,
+        message: 'Circuit Status Unavailable',
+        description: 'Backend health data is unavailable or still loading'
       }
     };
     return configs[state] || configs.UNKNOWN;
@@ -177,7 +189,7 @@ export default function CircuitBreakerStatus() {
             ) : (
               <>
                 <p className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  {metrics.totalRequests || 0}
+                  {metrics.requestCount || 0}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   Since last reset

@@ -236,6 +236,7 @@ class CircuitBreaker {
     return {
       state: this.state,
       failureRate: this.getFailureRate(),
+      threshold: this.config.failureThreshold,
       failureCount: this.failureCount,
       successCount: this.successCount,
       requestCount: this.requestCount,

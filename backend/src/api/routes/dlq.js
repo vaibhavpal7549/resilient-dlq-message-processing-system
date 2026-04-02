@@ -142,6 +142,59 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/dlq/:id/resolve
+ * Mark a DLQ message as resolved
+ */
+router.post('/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      resolvedBy = 'api',
+      notes = 'Resolved via API'
+    } = req.body || {};
+
+    const dlqMessage = await DLQMessage.findById(id);
+
+    if (!dlqMessage) {
+      return res.status(404).json({
+        success: false,
+        error: 'DLQ message not found'
+      });
+    }
+
+    if (dlqMessage.status === 'dlq_resolved') {
+      return res.json({
+        success: true,
+        message: 'Message is already resolved',
+        data: dlqMessage
+      });
+    }
+
+    await dlqMessage.markAsResolved(resolvedBy, notes);
+
+    logger.info('DLQ message resolved', {
+      dlqId: id,
+      messageId: dlqMessage.messageId,
+      resolvedBy
+    });
+
+    res.json({
+      success: true,
+      message: 'Message resolved successfully',
+      data: dlqMessage
+    });
+
+  } catch (error) {
+    logger.error('Failed to resolve DLQ message:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve message',
+      details: error.message
+    });
+  }
+});
+
+/**
  * POST /api/dlq/:id/replay
  * Replay a single DLQ message
  */
@@ -180,7 +233,7 @@ router.post('/:id/replay', async (req, res) => {
 
     // Update DLQ message
     dlqMessage.status = 'dlq_replayed';
-    await dlqMessage.addReplayAttempt({
+    const updatedMessage = await dlqMessage.addReplayAttempt({
       timestamp: new Date(),
       workerId: 'api',
       strategy: 'manual_replay',
@@ -197,7 +250,8 @@ router.post('/:id/replay', async (req, res) => {
     res.json({
       success: true,
       message: 'Message replayed successfully',
-      replayMessageId: replayMessage.messageId
+      replayMessageId: replayMessage.messageId,
+      data: updatedMessage
     });
 
   } catch (error) {
@@ -217,25 +271,44 @@ router.post('/:id/replay', async (req, res) => {
 router.post('/replay-batch', async (req, res) => {
   try {
     const {
+      messageIds = [],
       filters = {},
       batchSize = 100,
       dryRun = false
     } = req.body;
 
-    // Build query from filters
-    const query = { status: 'dlq_pending' };
-    if (filters.errorType) query.errorType = filters.errorType;
-    if (filters.source) query['metadata.source'] = filters.source;
-    if (filters.startDate || filters.endDate) {
-      query.createdAt = {};
-      if (filters.startDate) query.createdAt.$gte = new Date(filters.startDate);
-      if (filters.endDate) query.createdAt.$lte = new Date(filters.endDate);
+    // Build query from explicit IDs or filters
+    const query = {};
+
+    if (Array.isArray(messageIds) && messageIds.length > 0) {
+      query._id = { $in: messageIds };
+    } else {
+      query.status = 'dlq_pending';
+      if (filters.errorType) query.errorType = filters.errorType;
+      if (filters.source) query['metadata.source'] = filters.source;
+      if (filters.startDate || filters.endDate) {
+        query.createdAt = {};
+        if (filters.startDate) query.createdAt.$gte = new Date(filters.startDate);
+        if (filters.endDate) query.createdAt.$lte = new Date(filters.endDate);
+      }
     }
 
     // Find messages to replay
     const messages = await DLQMessage.find(query)
       .limit(batchSize)
       .lean();
+
+    if (messages.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No messages matched the replay request',
+        results: {
+          total: 0,
+          success: 0,
+          failed: 0
+        }
+      });
+    }
 
     if (dryRun) {
       return res.json({
@@ -271,6 +344,10 @@ router.post('/replay-batch', async (req, res) => {
         // Update status
         await DLQMessage.findByIdAndUpdate(dlqMsg._id, {
           status: 'dlq_replayed',
+          $inc: {
+            retryCount: 1,
+            dlqRetryCount: 1
+          },
           $push: {
             replayAttempts: {
               timestamp: new Date(),
