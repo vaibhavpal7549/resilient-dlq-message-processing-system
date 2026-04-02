@@ -127,6 +127,21 @@ A simple bash script demonstrating a file-based message queue.
 Run:
 ```bash
 bash scripts/unix_queue_demo.sh
+## DLQ Replay Script
+
+A bash script is provided to replay messages from the Dead Letter Queue.
+
+### Location
+
+### Usage
+```bash
+bash scripts/replay_dlq.sh
+
+Reads messages from a DLQ file (dlq.txt)
+
+Replays them sequentially
+
+Can be extended to call APIs or requeue messages
 
 ## Documentation
 
