@@ -120,6 +120,13 @@ npm test
 # Run load tests
 npm run test:load
 ```
+### Unix Queue Demo
+
+A simple bash script demonstrating a file-based message queue.
+
+Run:
+```bash
+bash scripts/unix_queue_demo.sh
 
 ## Documentation
 
