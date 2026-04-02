@@ -13,17 +13,23 @@ const dlqRouter = require('../../dlq/dlqRouter');
  */
 router.get('/health', async (req, res) => {
   try {
-    // Check component health
+    // Check component health (handle cases where components aren't initialized)
     const mongoHealthy = mongodb.isHealthy();
-    const redisHealthy = await redisClient.isHealthy();
     
-    // Get metrics
-    const queueMetrics = await queueManager.getQueueMetrics();
+    let redisHealthy = false;
+    try { redisHealthy = await redisClient.isHealthy(); } catch { /* not connected */ }
+    
+    let queueMetrics = null;
+    try { queueMetrics = await queueManager.getQueueMetrics(); } catch { /* not initialized */ }
+    
     const circuitBreakerMetrics = circuitBreaker.getMetrics();
     const processorMetrics = primaryProcessor.getMetrics();
-    const dlqStats = await dlqRouter.getStats();
+    
+    let dlqStats = null;
+    try { dlqStats = await dlqRouter.getStats(); } catch { /* not available */ }
 
-    const isHealthy = mongoHealthy && redisHealthy;
+    // Dashboard only requires MongoDB
+    const isHealthy = mongoHealthy;
 
     res.status(isHealthy ? 200 : 503).json({
       success: true,

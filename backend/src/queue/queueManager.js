@@ -19,13 +19,22 @@ class QueueManager {
       // Ensure Redis is connected
       await redisClient.connect();
 
+      // Detect if we're connecting to a cloud Redis that requires TLS (e.g. Upstash)
+      const needsTls = config.redis.host && (
+        config.redis.host.includes('upstash.io') ||
+        config.redis.host.includes('redis.cloud') ||
+        process.env.REDIS_TLS === 'true'
+      );
+
       // Create Bull queue
       this.messageQueue = new Queue('message-processing', {
         redis: {
           host: config.redis.host,
           port: config.redis.port,
           password: config.redis.password,
-          db: config.redis.db
+          db: config.redis.db,
+          ...(needsTls ? { tls: { rejectUnauthorized: false } } : {}),
+          connectTimeout: 10000,
         },
         defaultJobOptions: {
           attempts: 1, // We handle retries manually

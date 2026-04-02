@@ -88,22 +88,10 @@ async function start() {
   try {
     logger.info('Starting DLQ Backend Server...');
 
-    // Connect to MongoDB
+    // Connect to MongoDB (required - server can't work without it)
     await mongodb.connect();
 
-    // Connect to Redis
-    await redisClient.connect();
-
-    // Initialize queue
-    await queueManager.initialize();
-
-    // Initialize processor
-    await primaryProcessor.initialize();
-
-    // Start circuit breaker monitoring
-    circuitBreaker.startMonitoring();
-
-    // Start Express server
+    // Start Express server immediately - don't wait for Redis/Queue
     const PORT = config.server.port;
     const server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`, {
@@ -111,6 +99,22 @@ async function start() {
         port: PORT
       });
     });
+
+    // Initialize Redis, queue, and processor in the background (optional for dashboard)
+    // These are only needed for message replay/processing, not for viewing DLQ data
+    (async () => {
+      try {
+        await redisClient.connect();
+        await queueManager.initialize();
+        await primaryProcessor.initialize();
+        circuitBreaker.startMonitoring();
+        logger.info('Redis, queue, and processor initialized successfully');
+      } catch (err) {
+        logger.warn('Redis/queue initialization failed - replay features will be unavailable', {
+          error: err.message
+        });
+      }
+    })();
 
     // Graceful shutdown
     const shutdown = async (signal) => {

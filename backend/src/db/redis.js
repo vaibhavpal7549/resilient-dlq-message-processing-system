@@ -21,13 +21,26 @@ class RedisClient {
           port: config.redis.port
         });
 
+        // Detect if we're connecting to a cloud Redis that requires TLS (e.g. Upstash)
+        const needsTls = config.redis.host && (
+          config.redis.host.includes('upstash.io') ||
+          config.redis.host.includes('redis.cloud') ||
+          process.env.REDIS_TLS === 'true'
+        );
+
         this.client = new Redis({
           host: config.redis.host,
           port: config.redis.port,
           password: config.redis.password,
           db: config.redis.db,
+          ...(needsTls ? { tls: { rejectUnauthorized: false } } : {}),
+          connectTimeout: 10000,
           retryStrategy: (times) => {
-            const delay = Math.min(times * 50, 2000);
+            if (times > 5) {
+              logger.error('Redis max retries reached, giving up');
+              return null; // stop retrying
+            }
+            const delay = Math.min(times * 200, 3000);
             logger.warn(`Redis connection retry attempt ${times}, delay: ${delay}ms`);
             return delay;
           },
