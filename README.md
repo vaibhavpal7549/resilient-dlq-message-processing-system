@@ -120,6 +120,21 @@ npm test
 # Run load tests
 npm run test:load
 ```
+## DLQ Replay Script
+
+A bash script is provided to replay messages from the Dead Letter Queue.
+
+### Location
+
+### Usage
+```bash
+bash scripts/replay_dlq.sh
+
+Reads messages from a DLQ file (dlq.txt)
+
+Replays them sequentially
+
+Can be extended to call APIs or requeue messages
 
 ## Documentation
 
