@@ -1,6 +1,6 @@
 # Dead Letter Queue (DLQ) Handler
 
-A full-stack web application with a React + Tailwind frontend, Express backend, MongoDB persistence, a Node.js worker service, Unix-style queue simulation, and Bash automation scripts.
+A full-stack web application with a React + Tailwind frontend, Express backend, MongoDB persistence, RabbitMQ message broker, a Node.js worker service, Unix-style queue simulation, and automation scripts.
 
 ## Folder Tree
 

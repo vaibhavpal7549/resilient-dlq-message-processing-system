@@ -442,17 +442,18 @@ Returns a comprehensive health report of all system components — database conn
       "healthy": true,
       "status": "connected"
     },
-    "redis": {
+    "rabbitmq": {
       "healthy": true,
       "status": "connected"
     },
     "queue": {
       "healthy": true,
       "metrics": {
+        "messageCount": 4,
+        "consumerCount": 1,
         "waiting": 4,
-        "active": 2,
-        "completed": 1024,
-        "failed": 12
+        "active": 1,
+        "total": 4
       }
     },
     "circuitBreaker": {
@@ -492,7 +493,7 @@ Returns a comprehensive health report of all system components — database conn
   "timestamp": "2024-02-20T07:00:00.000Z",
   "components": {
     "mongodb": { "healthy": false, "status": "disconnected" },
-    "redis":   { "healthy": true,  "status": "connected"    }
+    "rabbitmq":   { "healthy": true,  "status": "connected"    }
   }
 }
 ```
