@@ -1,12 +1,11 @@
-const Queue = require('bull');
 const logger = require('../utils/logger').createComponentLogger('queue');
-const redisClient = require('../db/redis');
+const rabbitmqClient = require('./rabbitmq');
 const config = require('../utils/config');
 
 class QueueManager {
   constructor() {
-    this.messageQueue = null;
     this.isInitialized = false;
+    this.queueName = null;
   }
 
   async initialize() {
@@ -16,56 +15,21 @@ class QueueManager {
         return;
       }
 
-      // Ensure Redis is connected
-      await redisClient.connect();
+      this.queueName = config.queue.name;
 
-      // Detect if we're connecting to a cloud Redis that requires TLS (e.g. Upstash)
-      const needsTls = config.redis.host && (
-        config.redis.host.includes('upstash.io') ||
-        config.redis.host.includes('redis.cloud') ||
-        process.env.REDIS_TLS === 'true'
-      );
+      // Connect to RabbitMQ
+      const channel = await rabbitmqClient.connect();
 
-      // Create Bull queue
-      this.messageQueue = new Queue(config.queue.name, {
-        redis: {
-          host: config.redis.host,
-          port: config.redis.port,
-          password: config.redis.password,
-          db: config.redis.db,
-          ...(needsTls ? { tls: { rejectUnauthorized: false } } : {}),
-          connectTimeout: 10000,
-        },
-        defaultJobOptions: {
-          attempts: 1, // We handle retries manually
-          removeOnComplete: true,
-          removeOnFail: false
+      // Assert that the queue exists (creates it if not)
+      await channel.assertQueue(this.queueName, {
+        durable: true,       // Survive broker restarts
+        arguments: {
+          'x-message-ttl': 86400000 // Messages expire after 24 hours
         }
       });
 
-      // Queue event handlers
-      this.messageQueue.on('completed', (job, result) => {
-        logger.info('Job completed', { jobId: job.id, messageId: job.data.messageId });
-      });
-
-      this.messageQueue.on('failed', (job, err) => {
-        logger.error('Job failed', { 
-          jobId: job.id, 
-          messageId: job.data.messageId,
-          error: err.message 
-        });
-      });
-
-      this.messageQueue.on('stalled', (job) => {
-        logger.warn('Job stalled', { jobId: job.id, messageId: job.data.messageId });
-      });
-
-      this.messageQueue.on('error', (error) => {
-        logger.error('Queue error:', error);
-      });
-
       this.isInitialized = true;
-      logger.info('Queue initialized successfully');
+      logger.info('Queue initialized successfully', { queueName: this.queueName });
     } catch (error) {
       logger.error('Failed to initialize queue:', error);
       throw error;
@@ -78,26 +42,41 @@ class QueueManager {
         throw new Error('Queue not initialized');
       }
 
-      const jobOptions = {
-        delay: options.delay || 0,
-        attempts: options.attempts || 1,
-        removeOnComplete: true,
-        removeOnFail: false
+      const channel = rabbitmqClient.getChannel();
+      const messageBuffer = Buffer.from(JSON.stringify(message));
+
+      const publishOptions = {
+        persistent: true,      // Survive broker restarts
+        contentType: 'application/json',
+        messageId: message.messageId,
+        timestamp: Date.now()
       };
 
-      if (options.jobId) {
-        jobOptions.jobId = options.jobId;
+      // If delay is specified, use RabbitMQ delayed message via TTL + dead letter
+      // For simplicity, we publish directly (delay is handled by retry scheduling)
+      if (options.delay && options.delay > 0) {
+        // Create a temporary queue with TTL that forwards to main queue
+        const delayQueue = `${this.queueName}.delay.${options.delay}`;
+        await channel.assertQueue(delayQueue, {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': '',
+            'x-dead-letter-routing-key': this.queueName,
+            'x-message-ttl': options.delay,
+            'x-expires': options.delay + 60000 // Auto-delete queue after TTL + 1 min
+          }
+        });
+        channel.sendToQueue(delayQueue, messageBuffer, publishOptions);
+      } else {
+        channel.sendToQueue(this.queueName, messageBuffer, publishOptions);
       }
 
-      const job = await this.messageQueue.add(message, jobOptions);
-
-      logger.info('Message enqueued', { 
-        jobId: job.id, 
+      logger.info('Message enqueued', {
         messageId: message.messageId,
-        delay: jobOptions.delay
+        delay: options.delay || 0
       });
 
-      return job;
+      return { id: message.messageId };
     } catch (error) {
       logger.error('Failed to enqueue message:', error);
       throw error;
@@ -106,21 +85,19 @@ class QueueManager {
 
   async getQueueMetrics() {
     try {
-      const [waiting, active, completed, failed, delayed] = await Promise.all([
-        this.messageQueue.getWaitingCount(),
-        this.messageQueue.getActiveCount(),
-        this.messageQueue.getCompletedCount(),
-        this.messageQueue.getFailedCount(),
-        this.messageQueue.getDelayedCount()
-      ]);
+      if (!this.isInitialized) {
+        return null;
+      }
+
+      const channel = rabbitmqClient.getChannel();
+      const queueInfo = await channel.checkQueue(this.queueName);
 
       return {
-        waiting,
-        active,
-        completed,
-        failed,
-        delayed,
-        total: waiting + active + delayed
+        messageCount: queueInfo.messageCount,
+        consumerCount: queueInfo.consumerCount,
+        waiting: queueInfo.messageCount,
+        active: queueInfo.consumerCount,
+        total: queueInfo.messageCount
       };
     } catch (error) {
       logger.error('Failed to get queue metrics:', error);
@@ -128,26 +105,76 @@ class QueueManager {
     }
   }
 
-  async cleanQueue() {
-    try {
-      await this.messageQueue.clean(5000, 'completed');
-      await this.messageQueue.clean(86400000, 'failed'); // Keep failed jobs for 24 hours
-      logger.info('Queue cleaned');
-    } catch (error) {
-      logger.error('Failed to clean queue:', error);
-    }
+  getQueue() {
+    // Returns a queue-like object for backward compatibility with primaryProcessor
+    return {
+      process: (concurrency, handler) => {
+        this._startConsuming(concurrency, handler);
+      },
+      pause: async () => {
+        // Cancel consumer to pause
+        if (this._consumerTag) {
+          const channel = rabbitmqClient.getChannel();
+          await channel.cancel(this._consumerTag);
+          this._consumerTag = null;
+        }
+      },
+      resume: async () => {
+        // Re-register consumer
+        if (this._consumeHandler) {
+          await this._startConsuming(this._concurrency, this._consumeHandler);
+        }
+      }
+    };
   }
 
-  getQueue() {
-    return this.messageQueue;
+  async _startConsuming(concurrency, handler) {
+    try {
+      const channel = rabbitmqClient.getChannel();
+      this._consumeHandler = handler;
+      this._concurrency = concurrency;
+
+      // Set prefetch to control concurrency
+      await channel.prefetch(concurrency);
+
+      const { consumerTag } = await channel.consume(this.queueName, async (msg) => {
+        if (!msg) return;
+
+        try {
+          const data = JSON.parse(msg.content.toString());
+          // Create a job-like object for compatibility
+          const job = { id: data.messageId || msg.properties.messageId, data };
+          await handler(job);
+          channel.ack(msg);
+        } catch (error) {
+          logger.error('Message processing failed:', error);
+          // Don't requeue to avoid infinite loops - the processor handles DLQ routing
+          channel.nack(msg, false, false);
+        }
+      });
+
+      this._consumerTag = consumerTag;
+      logger.info('Started consuming messages', { queueName: this.queueName, concurrency });
+    } catch (error) {
+      logger.error('Failed to start consuming:', error);
+      throw error;
+    }
   }
 
   async close() {
     try {
-      if (this.messageQueue) {
-        await this.messageQueue.close();
-        logger.info('Queue closed');
+      if (this._consumerTag) {
+        try {
+          const channel = rabbitmqClient.getChannel();
+          await channel.cancel(this._consumerTag);
+        } catch (e) {
+          // Channel may already be closed
+        }
+        this._consumerTag = null;
       }
+      await rabbitmqClient.disconnect();
+      this.isInitialized = false;
+      logger.info('Queue closed');
     } catch (error) {
       logger.error('Error closing queue:', error);
     }

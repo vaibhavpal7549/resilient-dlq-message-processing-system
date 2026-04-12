@@ -52,17 +52,10 @@ const mongodb = {
 };
 
 /**
- * Redis Configuration
+ * RabbitMQ Configuration
  */
-const redis = {
-  host: getEnvVar('REDIS_HOST', 'localhost'),
-  port: getEnvInt('REDIS_PORT', 6379),
-  password: getEnvVar('REDIS_PASSWORD', ''),
-  db: getEnvInt('REDIS_DB', 0),
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  }
+const rabbitmq = {
+  url: getEnvVar('RABBITMQ_URL', 'amqp://localhost')
 };
 
 const queue = {
@@ -145,7 +138,7 @@ const app = {
 
 module.exports = {
   mongodb,
-  redis,
+  rabbitmq,
   queue,
   dlq,
   logging,

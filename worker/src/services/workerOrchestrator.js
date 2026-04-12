@@ -5,7 +5,7 @@
  * Manages polling loop, batch retrieval, stale lock cleanup, and graceful shutdown.
  */
 
-const Bull = require('bull');
+const amqp = require('amqplib');
 const config = require('../config');
 const { createComponentLogger } = require('../utils/logger');
 const { sleep, generateWorkerId } = require('../utils/helpers');
@@ -44,6 +44,8 @@ class WorkerOrchestrator {
         this.isRunning = false;
         this.isStopping = false;
         this.messageQueue = null;
+        this._connection = null;
+        this._channel = null;
         this.pollInterval = config.dlq.pollIntervalMs;
         this.batchSize = config.dlq.batchSize;
         this.lockTimeout = config.dlq.lockTimeoutMs;
@@ -59,7 +61,7 @@ class WorkerOrchestrator {
 
     /**
      * Initialize the worker
-     * Sets up message queue connection
+     * Sets up RabbitMQ connection and queue
      */
     async initialize() {
         try {
@@ -69,23 +71,64 @@ class WorkerOrchestrator {
                 batchSize: this.batchSize
             });
 
-            // Initialize Bull queue for message re-injection
-            this.messageQueue = new Bull(config.queue.name, {
-                redis: {
-                    host: config.redis.host,
-                    port: config.redis.port,
-                    password: config.redis.password || undefined,
-                    db: config.redis.db
-                },
-                defaultJobOptions: {
-                    removeOnComplete: true,
-                    removeOnFail: false,
-                    attempts: 1
+            // Connect to RabbitMQ
+            const url = config.rabbitmq.url;
+            logger.info('Connecting to RabbitMQ...', {
+                url: url.replace(/\/\/.*@/, '//***@')
+            });
+
+            this._connection = await amqp.connect(url);
+            this._channel = await this._connection.createChannel();
+
+            // Assert the queue exists
+            await this._channel.assertQueue(config.queue.name, {
+                durable: true,
+                arguments: {
+                    'x-message-ttl': 86400000
                 }
             });
 
-            // Setup queue event handlers
-            this.setupQueueEventHandlers();
+            // Create a queue-like wrapper for compatibility with messageProcessor/retryStrategy
+            this.messageQueue = {
+                add: async (message, options = {}) => {
+                    const messageBuffer = Buffer.from(JSON.stringify(message));
+                    const publishOptions = {
+                        persistent: true,
+                        contentType: 'application/json',
+                        messageId: message.messageId
+                    };
+
+                    if (options.delay && options.delay > 0) {
+                        const delayQueue = `${config.queue.name}.delay.${options.delay}`;
+                        await this._channel.assertQueue(delayQueue, {
+                            durable: true,
+                            arguments: {
+                                'x-dead-letter-exchange': '',
+                                'x-dead-letter-routing-key': config.queue.name,
+                                'x-message-ttl': options.delay,
+                                'x-expires': options.delay + 60000
+                            }
+                        });
+                        this._channel.sendToQueue(delayQueue, messageBuffer, publishOptions);
+                    } else {
+                        this._channel.sendToQueue(config.queue.name, messageBuffer, publishOptions);
+                    }
+
+                    return { id: message.messageId };
+                },
+                close: async () => {
+                    // Handled in stop()
+                }
+            };
+
+            // Setup connection event handlers
+            this._connection.on('error', (error) => {
+                logger.error('RabbitMQ connection error', toErrorMeta(error));
+            });
+
+            this._connection.on('close', () => {
+                logger.warn('RabbitMQ connection closed');
+            });
 
             logger.info('Worker orchestrator initialized successfully');
 
@@ -96,26 +139,6 @@ class WorkerOrchestrator {
             });
             throw error;
         }
-    }
-
-    /**
-     * Setup event handlers for the message queue
-     */
-    setupQueueEventHandlers() {
-        this.messageQueue.on('error', (error) => {
-            logger.error('Queue error', toErrorMeta(error));
-        });
-
-        this.messageQueue.on('failed', (job, error) => {
-            logger.error('Job failed', {
-                jobId: job.id,
-                ...toErrorMeta(error)
-            });
-        });
-
-        this.messageQueue.on('completed', (job) => {
-            logger.debug('Job completed', { jobId: job.id });
-        });
     }
 
     /**
@@ -246,16 +269,29 @@ class WorkerOrchestrator {
 
         this.isRunning = false;
 
-        // Close queue connection
-        if (this.messageQueue) {
-            try {
-                await this.messageQueue.close();
-                logger.info('Message queue closed');
-            } catch (error) {
-                logger.error('Error closing message queue', {
-                    error: error.message
-                });
+        // Close RabbitMQ channel and connection
+        try {
+            if (this._channel) {
+                await this._channel.close();
+                this._channel = null;
+                logger.info('RabbitMQ channel closed');
             }
+        } catch (error) {
+            logger.error('Error closing RabbitMQ channel', {
+                error: error.message
+            });
+        }
+
+        try {
+            if (this._connection) {
+                await this._connection.close();
+                this._connection = null;
+                logger.info('RabbitMQ connection closed');
+            }
+        } catch (error) {
+            logger.error('Error closing RabbitMQ connection', {
+                error: error.message
+            });
         }
 
         // Log final statistics

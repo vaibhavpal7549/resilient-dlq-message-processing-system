@@ -1,10 +1,10 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongodb = require('../db/mongodb');
-const redisClient = require('../db/redis');
 const queueManager = require('../queue/queueManager');
 const primaryProcessor = require('../processor/primaryProcessor');
 const circuitBreaker = require('../circuit-breaker/circuitBreaker');
@@ -93,7 +93,7 @@ async function start() {
     // Connect to MongoDB (required - server can't work without it)
     await mongodb.connect();
 
-    // Start Express server immediately - don't wait for Redis/Queue
+    // Start Express server immediately - don't wait for RabbitMQ/Queue
     const PORT = config.server.port;
     const server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`, {
@@ -102,17 +102,16 @@ async function start() {
       });
     });
 
-    // Initialize Redis, queue, and processor in the background (optional for dashboard)
+    // Initialize RabbitMQ, queue, and processor in the background (optional for dashboard)
     // These are only needed for message replay/processing, not for viewing DLQ data
     (async () => {
       try {
-        await redisClient.connect();
         await queueManager.initialize();
         await primaryProcessor.initialize();
         circuitBreaker.startMonitoring();
-        logger.info('Redis, queue, and processor initialized successfully');
+        logger.info('RabbitMQ, queue, and processor initialized successfully');
       } catch (err) {
-        logger.warn('Redis/queue initialization failed - replay features will be unavailable', {
+        logger.warn('RabbitMQ/queue initialization failed - replay features will be unavailable', {
           error: err.message
         });
       }
@@ -127,12 +126,11 @@ async function start() {
           // Stop circuit breaker monitoring
           circuitBreaker.stopMonitoring();
 
-          // Close queue
+          // Close queue (also disconnects RabbitMQ)
           await queueManager.close();
 
           // Disconnect from databases
           await mongodb.disconnect();
-          await redisClient.disconnect();
 
           logger.info('Server shut down successfully');
           process.exit(0);

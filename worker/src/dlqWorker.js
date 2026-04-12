@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const DLQMessage = require('../backend/src/db/models/DLQMessage');
 const logger = require('../backend/src/utils/logger').createComponentLogger('dlq-worker');
 const config = require('../backend/src/utils/config');
-const Bull = require('bull');
+const amqp = require('amqplib');
 
 class DLQWorker {
   constructor() {
@@ -13,6 +13,8 @@ class DLQWorker {
     this.batchSize = config.dlq.batchSize;
     this.maxRetries = config.dlq.maxRetries;
     this.messageQueue = null;
+    this._connection = null;
+    this._channel = null;
   }
 
   async initialize() {
@@ -25,16 +27,37 @@ class DLQWorker {
       });
       logger.info('MongoDB connected');
 
-      // Initialize message queue for re-injection
-      this.messageQueue = new Bull('message-processing', {
-        redis: {
-          host: config.redis.host,
-          port: config.redis.port,
-          password: config.redis.password,
-          db: config.redis.db
+      // Initialize RabbitMQ connection for message re-injection
+      const url = config.rabbitmq.url;
+      this._connection = await amqp.connect(url);
+      this._channel = await this._connection.createChannel();
+
+      // Assert the queue exists
+      await this._channel.assertQueue(config.queue.name, {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 86400000
         }
       });
-      logger.info('Queue initialized');
+
+      // Create a queue-like wrapper for compatibility
+      this.messageQueue = {
+        add: async (message) => {
+          const messageBuffer = Buffer.from(JSON.stringify(message));
+          this._channel.sendToQueue(config.queue.name, messageBuffer, {
+            persistent: true,
+            contentType: 'application/json',
+            messageId: message.messageId
+          });
+          return { id: message.messageId };
+        },
+        close: async () => {
+          if (this._channel) await this._channel.close();
+          if (this._connection) await this._connection.close();
+        }
+      };
+
+      logger.info('RabbitMQ queue initialized');
 
       this.isRunning = true;
       logger.info('DLQ Worker initialized successfully');

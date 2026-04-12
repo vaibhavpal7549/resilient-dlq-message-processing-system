@@ -106,7 +106,7 @@ function logStartup(workerId) {
         workerId,
         nodeEnv: config.app.env,
         mongoUri: config.mongodb.uri.replace(/\/\/.*@/, '//***@'), // Hide credentials
-        redisHost: config.redis.host,
+        rabbitmqUrl: config.rabbitmq.url.replace(/\/\/.*@/, '//***@'),
         pollInterval: config.dlq.pollIntervalMs,
         batchSize: config.dlq.batchSize,
         maxRetries: config.dlq.maxRetries

@@ -1,6 +1,6 @@
-require('dotenv').config();
-const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../..', '.env') });
+const fs = require('fs');
 
 class Config {
   constructor() {
@@ -37,12 +37,9 @@ class Config {
     };
   }
 
-  get redis() {
+  get rabbitmq() {
     return {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT) || 6379,
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: parseInt(process.env.REDIS_DB) || 0
+      url: process.env.RABBITMQ_URL || 'amqp://localhost'
     };
   }
 

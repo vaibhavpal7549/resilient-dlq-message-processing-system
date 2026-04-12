@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongodb = require('../../db/mongodb');
-const redisClient = require('../../db/redis');
+const rabbitmqClient = require('../../queue/rabbitmq');
 const queueManager = require('../../queue/queueManager');
 const circuitBreaker = require('../../circuit-breaker/circuitBreaker');
 const primaryProcessor = require('../../processor/primaryProcessor');
@@ -17,8 +17,8 @@ router.get('/health', async (req, res) => {
     // Check component health (handle cases where components aren't initialized)
     const mongoHealthy = mongodb.isHealthy();
     
-    let redisHealthy = false;
-    try { redisHealthy = await redisClient.isHealthy(); } catch { /* not connected */ }
+    let rabbitmqHealthy = false;
+    try { rabbitmqHealthy = await rabbitmqClient.isHealthy(); } catch { /* not connected */ }
     
     let queueMetrics = null;
     try { queueMetrics = await queueManager.getQueueMetrics(); } catch { /* not initialized */ }
@@ -44,9 +44,9 @@ router.get('/health', async (req, res) => {
           healthy: mongoHealthy,
           status: mongoHealthy ? 'connected' : 'disconnected'
         },
-        redis: {
-          healthy: redisHealthy,
-          status: redisHealthy ? 'connected' : 'disconnected'
+        rabbitmq: {
+          healthy: rabbitmqHealthy,
+          status: rabbitmqHealthy ? 'connected' : 'disconnected'
         },
         queue: {
           healthy: queueMetrics !== null,
