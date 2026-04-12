@@ -1,24 +1,32 @@
 #!/bin/bash
 
-# Simple Unix Message Queue Demo
-# Ye script file-based queue simulate karta hai
+set -euo pipefail
 
-QUEUE_FILE="queue.txt"
+SPOOL_DIR="${DLQ_SPOOL_DIR:-./scripts/unix-dlq-spool}"
+mkdir -p "$SPOOL_DIR"
 
-echo "📥 Adding messages to queue..."
+echo "Creating sample unix-style DLQ spool entries in $SPOOL_DIR"
 
-# Add messages
-echo "order_101" >> $QUEUE_FILE
-echo "payment_202" >> $QUEUE_FILE
-echo "email_303" >> $QUEUE_FILE
+cat > "$SPOOL_DIR/demo-timeout.json" <<'JSON'
+{
+  "messageId": "demo-timeout",
+  "originalMessage": {
+    "orderId": "ORD-1001",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "Timed out writing to downstream service",
+  "errorType": "TIMEOUT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "status": "dlq_pending",
+  "metadata": {
+    "source": "unix-demo",
+    "priority": 1,
+    "tags": ["demo", "spool"],
+    "overflowedToUnixSpool": true
+  }
+}
+JSON
 
-echo "📤 Processing queue..."
-
-# Process messages
-while read -r message
-do
-  echo "Processing: $message"
-  sleep 1
-done < $QUEUE_FILE
-
-echo "✅ Queue processing completed!"
+ls -1 "$SPOOL_DIR"

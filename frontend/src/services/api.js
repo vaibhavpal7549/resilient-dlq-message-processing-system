@@ -11,11 +11,13 @@ const api = axios.create({
 });
 
 export const systemAPI = {
-  getHealth: () => api.get('/api/system/health')
+  getHealth: () => api.get('/api/system/health'),
+  getCircuitBreaker: () => api.get('/api/system/circuit-breaker')
 };
 
 export const messagesAPI = {
-  submit: (message) => api.post('/api/messages', message)
+  submit: (message) => api.post('/api/messages', message),
+  getStats: () => api.get('/api/messages/stats')
 };
 
 export const dlqAPI = {

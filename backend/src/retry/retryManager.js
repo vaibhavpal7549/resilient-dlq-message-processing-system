@@ -53,6 +53,7 @@ class RetryManager {
   classifyError(error) {
     const errorMessage = error.message || '';
     const errorName = error.name || '';
+    const errorCode = error.code || '';
 
     // Check transient errors
     const transientPatterns = [
@@ -67,7 +68,7 @@ class RetryManager {
     ];
 
     for (const pattern of transientPatterns) {
-      if (pattern.test(errorMessage) || pattern.test(errorName)) {
+      if (pattern.test(errorMessage) || pattern.test(errorName) || pattern.test(errorCode)) {
         return 'TRANSIENT_ERROR';
       }
     }
@@ -85,7 +86,7 @@ class RetryManager {
     ];
 
     for (const pattern of permanentPatterns) {
-      if (pattern.test(errorMessage) || pattern.test(errorName)) {
+      if (pattern.test(errorMessage) || pattern.test(errorName) || pattern.test(errorCode)) {
         return 'PERMANENT_ERROR';
       }
     }
@@ -152,9 +153,10 @@ class RetryManager {
    * @returns {Object} Enhanced message with retry metadata
    */
   createRetryMetadata(message, error, retryCount) {
+    const nextRetryCount = retryCount + 1;
     return {
       ...message,
-      retryCount: retryCount + 1,
+      retryCount: nextRetryCount,
       lastError: {
         message: error.message,
         stack: error.stack,
@@ -164,11 +166,13 @@ class RetryManager {
       retryHistory: [
         ...(message.retryHistory || []),
         {
-          attempt: retryCount + 1,
+          attempt: nextRetryCount,
           timestamp: new Date(),
           error: error.message
         }
-      ]
+      ],
+      firstFailedAt: message.firstFailedAt || new Date(),
+      updatedAt: new Date()
     };
   }
 }

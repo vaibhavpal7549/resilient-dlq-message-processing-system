@@ -1,182 +1,165 @@
+# Dead Letter Queue (DLQ) Handler
 
+A full-stack web application with a React + Tailwind frontend, Express backend, MongoDB persistence, a Node.js worker service, Unix-style queue simulation, and Bash automation scripts.
 
-```md
-# DLQ Message Processing System
+## Folder Tree
 
-A production-grade Dead Letter Queue (DLQ) message processing system with circuit breaker protection, retry mechanisms, and comprehensive observability.
-
-## Features
-
-- ✅ Message ingestion via REST API
-- ✅ Automatic retry with exponential backoff
-- ✅ Dead Letter Queue for failed messages
-- ✅ Circuit breaker pattern for system protection
-- ✅ MongoDB persistence with rich metadata
-- ✅ Redis-based message queue
-- ✅ Comprehensive logging and monitoring
-- ✅ Admin dashboard (React.js)
-
-## Architecture
-
+```text
+dlq/
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── context/
+│   │   ├── hooks/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── index.html
+│   ├── package.json
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── backend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── circuit-breaker/
+│   │   ├── db/
+│   │   ├── dlq/
+│   │   ├── processor/
+│   │   ├── queue/
+│   │   ├── retry/
+│   │   └── utils/
+│   └── package.json
+├── worker/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── db/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── index.js
+│   └── package.json
+├── scripts/
+│   ├── demo-dlq.ps1
+│   ├── demo-dlq.sh
+│   ├── replay-dlq.ps1
+│   ├── replay-dlq.sh
+│   └── unix_queue_demo.sh
+├── config/
+│   ├── circuit-breaker.json
+│   └── retry-policies.json
+├── docker/
+├── .env
+├── .env.example
+├── HOW_TO_RUN.md
+├── README.md
+└── package.json
 ```
 
-Client → API Gateway → Circuit Breaker → Message Queue → Primary Processor
-↓
-Retry Manager
-↓
-DLQ Router → MongoDB
-↓
-DLQ Worker → Replay
+## Initial Setup Commands
 
-````
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- MongoDB 6.0+
-- Redis 7.0+
-
-### Installation
-
-1. Clone the repository
-
-```bash
-git clone <repository-url>
-cd dlq
-````
-
-2. Install backend dependencies
+Install dependencies for each service:
 
 ```bash
 cd backend
 npm install
+
+cd ../frontend
+npm install
+
+cd ../worker
+npm install
 ```
 
-3. Configure environment
+Or run them from the repo root one at a time:
 
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+npm --prefix backend install
+npm --prefix frontend install
+npm --prefix worker install
 ```
 
-4. Start MongoDB and Redis
+Copy environment variables:
 
 ```bash
-# Using Docker
-docker run -d -p 27017:27017 --name mongodb mongo:6.0
-docker run -d -p 6379:6379 --name redis redis:7.0
+copy .env.example .env
 ```
 
-5. Start the backend server
+## Start The Application
+
+Backend:
 
 ```bash
-npm run dev
+npm run dev:backend
 ```
 
-The API will be available at:
-
-```
-http://localhost:3000
-```
-
-## API Endpoints
-
-### Submit Message
+Frontend:
 
 ```bash
-POST /api/messages
-Content-Type: application/json
-
-{
-  "payload": {
-    "data": "your message data"
-  },
-  "source": "api",
-  "priority": 1
-}
+npm run dev:frontend
 ```
 
-### Health Check
+Worker:
 
 ```bash
-GET /api/system/health
+npm run dev:worker
 ```
 
-## Configuration
+## Basic Server Startup Code
 
-Configuration files are located in the `config/` directory:
+The Express server entrypoint is [server.js](/d:/dlq/backend/src/api/server.js:1). It:
 
-* `retry-policies.json` - Retry limits and backoff settings
-* `circuit-breaker.json` - Circuit breaker thresholds
+- loads environment variables with `dotenv`
+- creates the Express app
+- registers middleware and API routes
+- connects MongoDB
+- initializes the queue and processor
 
-## Project Structure
+Main backend script:
 
-```
-dlq/
-├── backend/          # Express.js API server
-├── worker/           # DLQ worker service
-├── frontend/         # React.js dashboard
-├── scripts/          # Automation scripts
-├── config/           # Configuration files
-└── docs/             # Documentation
-```
+```js
+require('dotenv').config();
+const express = require('express');
 
-## Development
+const app = express();
+app.use(express.json());
 
-```bash
-# Run backend in development mode
-cd backend
-npm run dev
+app.get('/', (req, res) => {
+  res.json({ service: 'Dead Letter Queue Handler', status: 'running' });
+});
 
-# Run tests
-npm test
-
-# Run load tests
-npm run test:load
+app.listen(process.env.PORT || 3000);
 ```
 
-## Unix Queue Demo
+## Basic Client Startup Code
 
-A simple bash script demonstrating a file-based message queue.
+The React entrypoints are [main.jsx](/d:/dlq/frontend/src/main.jsx:1) and [App.jsx](/d:/dlq/frontend/src/App.jsx:1). Vite boots the app and Tailwind styles are loaded from [index.css](/d:/dlq/frontend/src/index.css:1).
 
-### Run
+Main frontend script:
 
-```bash
-bash scripts/unix_queue_demo.sh
+```jsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 ```
 
-## DLQ Replay Script
+## Service Package Files
 
-A bash script is provided to replay messages from the Dead Letter Queue.
+- Root scripts: [package.json](/d:/dlq/package.json:1)
+- Backend service: [backend/package.json](/d:/dlq/backend/package.json:1)
+- Frontend service: [frontend/package.json](/d:/dlq/frontend/package.json:1)
+- Worker service: [worker/package.json](/d:/dlq/worker/package.json:1)
 
-### Location
+## Local URLs
 
-### Usage
-
-```bash
-bash scripts/replay_dlq.sh
-```
-
-Reads messages from a DLQ file (dlq.txt)
-
-Replays them sequentially
-
-Can be extended to call APIs or requeue messages
-
-## Documentation
-
-* [PRD](prd.md) - Product Requirements Document
-* [Implementation Plan](docs/implementation_plan.md) - Detailed implementation guide
-* [API Documentation](docs/API.md) - Complete API reference
-
-## License
-
-MIT
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-```
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000`
+- Health: `http://localhost:3000/api/system/health`

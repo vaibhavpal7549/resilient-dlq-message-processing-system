@@ -5,6 +5,7 @@ const path = require('path');
 class Config {
   constructor() {
     this.env = process.env.NODE_ENV || 'development';
+    this.projectRoot = path.join(__dirname, '../../..');
     this.loadConfigurations();
   }
 
@@ -48,7 +49,8 @@ class Config {
   get queue() {
     return {
       concurrency: parseInt(process.env.QUEUE_CONCURRENCY) || 10,
-      maxSize: parseInt(process.env.QUEUE_MAX_SIZE) || 100000
+      maxSize: parseInt(process.env.QUEUE_MAX_SIZE) || 100000,
+      name: process.env.QUEUE_NAME || 'message-processing'
     };
   }
 
@@ -56,7 +58,26 @@ class Config {
     return {
       pollIntervalMs: parseInt(process.env.DLQ_POLL_INTERVAL_MS) || 30000,
       batchSize: parseInt(process.env.DLQ_BATCH_SIZE) || 10,
-      maxRetries: parseInt(process.env.DLQ_MAX_RETRIES) || 5
+      maxRetries: parseInt(process.env.DLQ_MAX_RETRIES) || 5,
+      lockTimeoutMs: parseInt(process.env.DLQ_LOCK_TIMEOUT_MS) || 300000,
+      retryBackoffMinutes: this.retryPolicies.dlqRetries?.immediate || [1, 5, 15, 30, 60],
+      offPeakHour: parseInt(process.env.DLQ_OFF_PEAK_HOUR) || 2,
+      replayBatchLimit: parseInt(process.env.DLQ_REPLAY_BATCH_LIMIT) || 100,
+      policyVersion: process.env.DLQ_POLICY_VERSION || this.retryPolicies.policyVersion || 'git-tracked-v1'
+    };
+  }
+
+  get spool() {
+    return {
+      enabled: process.env.DLQ_SPOOL_ENABLED !== 'false',
+      directory: path.resolve(this.projectRoot, process.env.DLQ_SPOOL_DIR || path.join('scripts', 'unix-dlq-spool')),
+      replayBatchSize: parseInt(process.env.DLQ_SPOOL_REPLAY_BATCH_SIZE) || 50
+    };
+  }
+
+  get project() {
+    return {
+      name: process.env.PROJECT_NAME || 'Dead Letter Queue Handler'
     };
   }
 

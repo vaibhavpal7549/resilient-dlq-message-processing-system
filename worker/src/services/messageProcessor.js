@@ -6,7 +6,7 @@
  */
 
 const { createComponentLogger } = require('../utils/logger');
-const { determineRetryStrategy } = require('./failureClassifier');
+const { determineRetryStrategy, classifyError } = require('./failureClassifier');
 const { executeStrategy } = require('./retryStrategy');
 
 const logger = createComponentLogger('message-processor');
@@ -29,6 +29,7 @@ async function processMessage(message, messageQueue, workerId) {
         logger.info('Processing DLQ message', {
             messageId: message.messageId,
             errorType: message.errorType,
+            errorCategory: classifyError(message.errorType),
             dlqRetryCount: message.dlqRetryCount,
             status: message.status
         });
@@ -54,8 +55,9 @@ async function processMessage(message, messageQueue, workerId) {
         });
 
         return {
-            success: true,
+            success: result.success,
             messageId: message.messageId,
+            errorCategory: classifyError(message.errorType),
             strategy,
             processingTimeMs: processingTime,
             ...result
@@ -85,6 +87,7 @@ async function processMessage(message, messageQueue, workerId) {
         return {
             success: false,
             messageId: message.messageId,
+            errorCategory: classifyError(message.errorType),
             error: error.message,
             processingTimeMs: processingTime
         };

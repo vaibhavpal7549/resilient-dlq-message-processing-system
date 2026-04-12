@@ -11,6 +11,7 @@ const { logStartup, logShutdown, logger } = require('./utils/logger');
 
 // Global worker instance
 let worker = null;
+let shutdownInProgress = false;
 
 /**
  * Start the DLQ worker service
@@ -48,6 +49,13 @@ async function start() {
  * Gracefully shutdown the worker
  */
 async function shutdown(signal) {
+    if (shutdownInProgress) {
+        logger.warn('Shutdown already in progress', { signal });
+        return;
+    }
+
+    shutdownInProgress = true;
+
     try {
         logShutdown(signal);
 
@@ -89,7 +97,7 @@ function setupSignalHandlers() {
             error: error.message,
             stack: error.stack
         });
-        shutdown('uncaughtException');
+        shutdown('uncaughtException').catch(() => process.exit(1));
     });
 
     process.on('unhandledRejection', (reason, promise) => {
@@ -97,7 +105,7 @@ function setupSignalHandlers() {
             reason,
             promise
         });
-        shutdown('unhandledRejection');
+        shutdown('unhandledRejection').catch(() => process.exit(1));
     });
 }
 

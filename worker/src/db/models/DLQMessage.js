@@ -108,12 +108,24 @@ const dlqMessageSchema = new mongoose.Schema({
         },
         tags: [String],
         requestHeaders: mongoose.Schema.Types.Mixed,
+        policyVersion: String,
+        originalQueue: String,
+        overflowedToUnixSpool: {
+            type: Boolean,
+            default: false
+        },
         systemState: {
             cpuUsage: Number,
             memoryUsage: Number,
             activeConnections: Number,
             queueDepth: Number
         }
+    },
+
+    debug: {
+        lastErrorName: String,
+        lastErrorCode: String,
+        lastDecision: String
     },
 
     // Replay attempt history

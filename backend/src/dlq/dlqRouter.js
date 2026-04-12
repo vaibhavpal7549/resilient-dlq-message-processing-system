@@ -1,10 +1,15 @@
 const DLQMessage = require('../db/models/DLQMessage');
 const logger = require('../utils/logger').createComponentLogger('dlq-router');
 const os = require('os');
+const config = require('../utils/config');
+const circuitBreaker = require('../circuit-breaker/circuitBreaker');
+const unixSpool = require('./unixSpool');
+const dlqQueue = require('./dlqQueue');
 
 class DLQRouter {
   constructor() {
     this.dlqCount = 0;
+    unixSpool.ensureDirectory();
   }
 
   /**
@@ -14,57 +19,94 @@ class DLQRouter {
    * @param {Object} decision - Retry decision with error classification
    */
   async routeToDLQ(message, error, decision) {
+    const messageId = message.messageId;
+    const retryCount = message.retryCount || 0;
+    const now = new Date();
+    const systemState = this.captureSystemState();
+    const payload = {
+      messageId,
+      originalMessage: message.payload || message,
+      errorReason: error.message,
+      errorStack: error.stack,
+      errorType: decision.errorType || 'UNKNOWN_ERROR',
+      retryCount,
+      dlqRetryCount: message.dlqRetryCount || 0,
+      firstFailedAt: message.firstFailedAt || now,
+      lastFailedAt: now,
+      status: 'dlq_pending',
+      nextRetryAt: new Date(Date.now() + 60000),
+      metadata: {
+        source: message.source || 'api',
+        priority: message.priority || 2,
+        tags: message.tags || [],
+        requestHeaders: message.headers || {},
+        systemState,
+        policyVersion: config.dlq.policyVersion,
+        originalQueue: config.queue.name,
+        overflowedToUnixSpool: false
+      },
+      debug: {
+        lastErrorName: error.name,
+        lastErrorCode: error.code,
+        lastDecision: decision.reason || decision.action
+      }
+    };
+
+    if (!circuitBreaker.shouldAllowDLQWrite()) {
+      return this.overflowToUnixSpool(payload, 'circuit-open');
+    }
+
     try {
-      const messageId = message.messageId;
-      const retryCount = message.retryCount || 0;
-      const now = new Date();
+      const dlqMessage = await dlqQueue.enqueueDLQ(payload);
 
-      // Capture system state
-      const systemState = this.captureSystemState();
-
-      // Create DLQ message document
-      const dlqMessage = new DLQMessage({
-        messageId,
-        originalMessage: message.payload || message,
-        errorReason: error.message,
-        errorStack: error.stack,
-        errorType: decision.errorType || 'UNKNOWN_ERROR',
-        retryCount,
-        dlqRetryCount: 0,
-        firstFailedAt: message.firstFailedAt || now,
-        lastFailedAt: now,
-        status: 'dlq_pending',
-        nextRetryAt: new Date(Date.now() + 60000), // Default: retry in 1 minute
-        metadata: {
-          source: message.source || 'api',
-          priority: message.priority || 2,
-          tags: message.tags || [],
-          requestHeaders: message.headers || {},
-          systemState
-        },
-        replayAttempts: []
-      });
-
-      // Save to MongoDB
-      await dlqMessage.save();
       this.dlqCount++;
 
       logger.info('Message persisted to DLQ', {
         messageId,
         errorType: decision.errorType,
         retryCount,
-        dlqId: dlqMessage._id
+        dlqId: dlqMessage._id,
+        queueDepth: dlqQueue.getDepth()
       });
 
-      // Emit DLQ event for monitoring
       this.emitDLQEvent(dlqMessage);
 
-      return dlqMessage;
-
-    } catch (error) {
-      logger.error('Failed to route message to DLQ:', error);
-      throw error;
+      return {
+        storage: 'mongodb',
+        dlqMessage
+      };
+    } catch (persistenceError) {
+      logger.error('Failed to persist DLQ message, using unix spool fallback', {
+        messageId,
+        error: persistenceError.message
+      });
+      return this.overflowToUnixSpool(payload, 'mongodb-write-failed');
     }
+  }
+
+  async overflowToUnixSpool(payload, reason) {
+    const spoolEntry = {
+      ...payload,
+      overflowReason: reason,
+      spooledAt: new Date(),
+      metadata: {
+        ...payload.metadata,
+        overflowedToUnixSpool: true
+      }
+    };
+
+    const { fileName, absolutePath } = await unixSpool.enqueue(spoolEntry);
+    this.emitDLQEvent({
+      messageId: payload.messageId,
+      errorType: payload.errorType,
+      retryCount: payload.retryCount
+    });
+
+    return {
+      storage: 'unix-spool',
+      fileName,
+      absolutePath
+    };
   }
 
   /**
@@ -139,12 +181,16 @@ class DLQRouter {
         DLQMessage.countDocuments({ status: 'dlq_failed' })
       ]);
 
+      const spoolStats = await unixSpool.getStats();
+
       return {
         total,
         pending,
         processing,
         resolved,
         failed,
+        inMemoryDepth: dlqQueue.getDepth(),
+        spool: spoolStats,
         routedInSession: this.dlqCount
       };
     } catch (error) {

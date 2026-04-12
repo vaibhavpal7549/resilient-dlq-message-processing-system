@@ -1,5 +1,6 @@
 const logger = require('../utils/logger').createComponentLogger('circuit-breaker');
 const config = require('../utils/config');
+const DLQMessage = require('../db/models/DLQMessage');
 
 class CircuitBreaker {
   constructor() {
@@ -11,6 +12,10 @@ class CircuitBreaker {
     this.halfOpenSuccesses = 0;
     this.halfOpenFailures = 0;
     this.metricsWindow = [];
+    this.lastEvaluationAt = Date.now();
+    this.lastKnownDLQTotal = 0;
+    this.lastKnownPendingDLQ = 0;
+    this.lastDLQGrowth = 0;
     this.config = config.circuitBreaker;
     this.monitoringInterval = null;
   }
@@ -23,8 +28,18 @@ class CircuitBreaker {
       return;
     }
 
+    this.refreshDLQMetrics().catch((error) => {
+      logger.warn('Initial DLQ metrics refresh failed', {
+        error: error.message
+      });
+    });
+
     this.monitoringInterval = setInterval(() => {
-      this.evaluateState();
+      this.evaluateState().catch((error) => {
+        logger.error('Circuit breaker evaluation failed', {
+          error: error.message
+        });
+      });
     }, this.config.evaluationIntervalMs);
 
     logger.info('Circuit breaker monitoring started');
@@ -99,9 +114,14 @@ class CircuitBreaker {
    * Evaluate circuit state
    */
   async evaluateState() {
+    await this.refreshDLQMetrics();
+
     if (this.state === 'CLOSED') {
       const failureRate = this.getFailureRate();
-      if (failureRate >= this.config.failureThreshold) {
+      const dlqGrowthExceeded = this.lastDLQGrowth >= this.config.dlqGrowthThreshold;
+      const dlqBacklogExceeded = this.lastKnownPendingDLQ >= this.config.maxPendingDlqMessages;
+
+      if (failureRate >= this.config.failureThreshold || dlqGrowthExceeded || dlqBacklogExceeded) {
         await this.transitionTo('OPEN');
       }
     } else if (this.state === 'OPEN') {
@@ -139,7 +159,9 @@ class CircuitBreaker {
 
     logger.info(`Circuit breaker state transition: ${oldState} → ${newState}`, {
       failureRate: this.getFailureRate(),
-      metricsCount: this.metricsWindow.length
+      metricsCount: this.metricsWindow.length,
+      dlqGrowth: this.lastDLQGrowth,
+      pendingDlqMessages: this.lastKnownPendingDLQ
     });
 
     if (newState === 'OPEN') {
@@ -163,7 +185,11 @@ class CircuitBreaker {
   async onCircuitOpen() {
     logger.warn('Circuit breaker OPEN - blocking new requests', {
       failureRate: this.getFailureRate(),
-      threshold: this.config.failureThreshold
+      threshold: this.config.failureThreshold,
+      dlqGrowth: this.lastDLQGrowth,
+      dlqGrowthThreshold: this.config.dlqGrowthThreshold,
+      pendingDlqMessages: this.lastKnownPendingDLQ,
+      maxPendingDlqMessages: this.config.maxPendingDlqMessages
     });
 
     // In production, this would:
@@ -210,6 +236,10 @@ class CircuitBreaker {
     return false;
   }
 
+  shouldAllowDLQWrite() {
+    return this.state !== 'OPEN';
+  }
+
   /**
    * Get current state
    */
@@ -235,8 +265,14 @@ class CircuitBreaker {
   getMetrics() {
     return {
       state: this.state,
+      dlqWritesAllowed: this.shouldAllowDLQWrite(),
       failureRate: this.getFailureRate(),
       threshold: this.config.failureThreshold,
+      dlqGrowthThreshold: this.config.dlqGrowthThreshold,
+      maxPendingDlqMessages: this.config.maxPendingDlqMessages,
+      lastDLQGrowth: this.lastDLQGrowth,
+      lastKnownDLQTotal: this.lastKnownDLQTotal,
+      lastKnownPendingDLQ: this.lastKnownPendingDLQ,
       failureCount: this.failureCount,
       successCount: this.successCount,
       requestCount: this.requestCount,
@@ -286,6 +322,24 @@ class CircuitBreaker {
     this.requestCount = 0;
     this.metricsWindow = [];
     logger.info('Circuit breaker metrics reset');
+  }
+
+  async refreshDLQMetrics() {
+    try {
+      const [total, pending] = await Promise.all([
+        DLQMessage.countDocuments(),
+        DLQMessage.countDocuments({ status: 'dlq_pending' })
+      ]);
+
+      this.lastDLQGrowth = Math.max(0, total - this.lastKnownDLQTotal);
+      this.lastKnownDLQTotal = total;
+      this.lastKnownPendingDLQ = pending;
+      this.lastEvaluationAt = Date.now();
+    } catch (error) {
+      logger.warn('Unable to refresh DLQ metrics for circuit breaker', {
+        error: error.message
+      });
+    }
   }
 }
 

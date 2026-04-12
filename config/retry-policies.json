@@ -1,4 +1,5 @@
 {
+  "policyVersion": "git-tracked-v2",
   "maxRetries": 3,
   "baseBackoffMs": 1000,
   "maxBackoffMs": 30000,
@@ -13,13 +14,17 @@
       "TIMEOUT_ERROR",
       "CONNECTION_ERROR",
       "RATE_LIMIT_ERROR",
-      "SERVICE_UNAVAILABLE"
+      "SERVICE_UNAVAILABLE",
+      "NETWORK_ERROR",
+      "TEMPORARY_FAILURE"
     ],
     "permanent": [
       "VALIDATION_ERROR",
       "AUTHORIZATION_ERROR",
       "NOT_FOUND_ERROR",
-      "BUSINESS_LOGIC_ERROR"
+      "BUSINESS_LOGIC_ERROR",
+      "SCHEMA_ERROR",
+      "INVALID_REQUEST"
     ]
   }
 }

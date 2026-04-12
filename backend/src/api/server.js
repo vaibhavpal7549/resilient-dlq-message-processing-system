@@ -53,12 +53,14 @@ app.use('/api/system', healthRoute);
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    service: 'DLQ Message Processing System',
+    service: config.project.name,
     version: '1.0.0',
     status: 'running',
     endpoints: {
       messages: 'POST /api/messages',
-      health: 'GET /api/system/health'
+      health: 'GET /api/system/health',
+      dlq: 'GET /api/dlq',
+      spoolReplay: 'POST /api/dlq/spool/replay'
     }
   });
 });

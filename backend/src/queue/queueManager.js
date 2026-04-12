@@ -27,7 +27,7 @@ class QueueManager {
       );
 
       // Create Bull queue
-      this.messageQueue = new Queue('message-processing', {
+      this.messageQueue = new Queue(config.queue.name, {
         redis: {
           host: config.redis.host,
           port: config.redis.port,
@@ -72,19 +72,29 @@ class QueueManager {
     }
   }
 
-  async enqueue(message) {
+  async enqueue(message, options = {}) {
     try {
       if (!this.isInitialized) {
         throw new Error('Queue not initialized');
       }
 
-      const job = await this.messageQueue.add(message, {
-        jobId: message.messageId
-      });
+      const jobOptions = {
+        delay: options.delay || 0,
+        attempts: options.attempts || 1,
+        removeOnComplete: true,
+        removeOnFail: false
+      };
+
+      if (options.jobId) {
+        jobOptions.jobId = options.jobId;
+      }
+
+      const job = await this.messageQueue.add(message, jobOptions);
 
       logger.info('Message enqueued', { 
         jobId: job.id, 
-        messageId: message.messageId 
+        messageId: message.messageId,
+        delay: jobOptions.delay
       });
 
       return job;

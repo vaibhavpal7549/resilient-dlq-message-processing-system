@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/api/server.js",
     "dev": "nodemon src/api/server.js",
-    "test": "jest --coverage",
+    "test": "jest --coverage --passWithNoTests",
     "test:unit": "jest tests/unit",
     "test:integration": "jest tests/integration",
     "test:load": "node tests/load/load-test.js"

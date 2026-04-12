@@ -1,4 +1,16 @@
 {
+  "name": "dead-letter-queue-handler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack Dead Letter Queue (DLQ) Handler application",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:worker": "npm --prefix worker run dev",
+    "start:backend": "npm --prefix backend run start",
+    "start:frontend": "npm --prefix frontend run preview",
+    "start:worker": "npm --prefix worker run start"
+  },
   "dependencies": {
     "mongodb": "^7.1.0",
     "mongoose": "^9.2.0"

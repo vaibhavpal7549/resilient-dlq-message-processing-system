@@ -65,6 +65,10 @@ const redis = {
   }
 };
 
+const queue = {
+  name: getEnvVar('QUEUE_NAME', 'message-processing')
+};
+
 /**
  * DLQ Worker Configuration
  */
@@ -142,6 +146,7 @@ const app = {
 module.exports = {
   mongodb,
   redis,
+  queue,
   dlq,
   logging,
   errorClassification,

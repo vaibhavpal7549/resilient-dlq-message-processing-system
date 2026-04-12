@@ -14,6 +14,27 @@ const { processBatch } = require('./messageProcessor');
 
 const logger = createComponentLogger('worker-orchestrator');
 
+function toErrorMeta(error) {
+    if (!error) {
+        return { error: 'Unknown queue error' };
+    }
+
+    if (error instanceof Error) {
+        return {
+            error: error.message || error.name,
+            name: error.name,
+            code: error.code,
+            stack: error.stack
+        };
+    }
+
+    if (typeof error === 'string') {
+        return { error };
+    }
+
+    return { error: JSON.stringify(error) };
+}
+
 /**
  * Worker Orchestrator Class
  */
@@ -21,6 +42,7 @@ class WorkerOrchestrator {
     constructor() {
         this.workerId = generateWorkerId();
         this.isRunning = false;
+        this.isStopping = false;
         this.messageQueue = null;
         this.pollInterval = config.dlq.pollIntervalMs;
         this.batchSize = config.dlq.batchSize;
@@ -29,6 +51,8 @@ class WorkerOrchestrator {
             totalProcessed: 0,
             totalSuccessful: 0,
             totalFailed: 0,
+            loopIterations: 0,
+            lastPollAt: null,
             startTime: null
         };
     }
@@ -46,7 +70,7 @@ class WorkerOrchestrator {
             });
 
             // Initialize Bull queue for message re-injection
-            this.messageQueue = new Bull('message-processing', {
+            this.messageQueue = new Bull(config.queue.name, {
                 redis: {
                     host: config.redis.host,
                     port: config.redis.port,
@@ -79,13 +103,13 @@ class WorkerOrchestrator {
      */
     setupQueueEventHandlers() {
         this.messageQueue.on('error', (error) => {
-            logger.error('Queue error', { error: error.message });
+            logger.error('Queue error', toErrorMeta(error));
         });
 
         this.messageQueue.on('failed', (job, error) => {
             logger.error('Job failed', {
                 jobId: job.id,
-                error: error.message
+                ...toErrorMeta(error)
             });
         });
 
@@ -110,6 +134,15 @@ class WorkerOrchestrator {
         // Main polling loop
         while (this.isRunning) {
             try {
+                this.stats.loopIterations += 1;
+                this.stats.lastPollAt = new Date();
+
+                logger.debug('Worker poll tick', {
+                    workerId: this.workerId,
+                    loopIterations: this.stats.loopIterations,
+                    pollInterval: this.pollInterval
+                });
+
                 // Clear stale locks before processing
                 await this.clearStaleLocks();
 
@@ -170,7 +203,8 @@ class WorkerOrchestrator {
             }
 
             logger.info('Found pending DLQ messages', {
-                count: messages.length
+                count: messages.length,
+                workerId: this.workerId
             });
 
             // Process the batch
@@ -185,6 +219,7 @@ class WorkerOrchestrator {
                 processed: results.total,
                 successful: results.successful,
                 failed: results.failed,
+                failureDetails: results.details.filter((detail) => !detail.success).slice(0, 3),
                 totalProcessed: this.stats.totalProcessed
             });
 
@@ -200,6 +235,11 @@ class WorkerOrchestrator {
      * Stop the worker gracefully
      */
     async stop() {
+        if (this.isStopping) {
+            return;
+        }
+
+        this.isStopping = true;
         logger.info('Stopping worker orchestrator', {
             workerId: this.workerId
         });
@@ -237,6 +277,8 @@ class WorkerOrchestrator {
             totalProcessed: this.stats.totalProcessed,
             totalSuccessful: this.stats.totalSuccessful,
             totalFailed: this.stats.totalFailed,
+            loopIterations: this.stats.loopIterations,
+            lastPollAt: this.stats.lastPollAt,
             successRate: this.stats.totalProcessed > 0
                 ? `${((this.stats.totalSuccessful / this.stats.totalProcessed) * 100).toFixed(2)}%`
                 : 'N/A',

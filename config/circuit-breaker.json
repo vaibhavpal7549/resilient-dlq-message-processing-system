@@ -1,5 +1,7 @@
 {
   "failureThreshold": 0.5,
+  "dlqGrowthThreshold": 5,
+  "maxPendingDlqMessages": 25,
   "timeWindowMs": 60000,
   "minimumRequests": 10,
   "openTimeoutMs": 30000,

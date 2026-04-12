@@ -4,6 +4,7 @@ const retryManager = require('../retry/retryManager');
 const dlqRouter = require('../dlq/dlqRouter');
 const circuitBreaker = require('../circuit-breaker/circuitBreaker');
 const config = require('../utils/config');
+const { Message } = require('../db/models/Message');
 
 class PrimaryProcessor {
   constructor() {
@@ -47,6 +48,17 @@ class PrimaryProcessor {
       // Execute business logic
       const result = await this.executeBusinessLogic(message);
 
+      await Message.findOneAndUpdate(
+        { messageId },
+        {
+          $set: {
+            status: 'RESOLVED',
+            retryCount,
+            failureReason: null
+          }
+        }
+      );
+
       // Record success
       await circuitBreaker.recordSuccess();
       this.processedCount++;
@@ -72,6 +84,17 @@ class PrimaryProcessor {
         error: error.message,
         duration
       });
+
+      await Message.findOneAndUpdate(
+        { messageId },
+        {
+          $set: {
+            status: 'FAILED',
+            retryCount,
+            failureReason: error.message
+          }
+        }
+      );
 
       // Get retry decision
       const decision = retryManager.getRetryDecision(retryCount, error);
@@ -104,15 +127,15 @@ class PrimaryProcessor {
       
       switch (errorType) {
         case 'TIMEOUT_ERROR':
-          throw new Error('External API timeout after 5000ms');
+          throw this.createSimulatedError('External API timeout after 5000ms', 'TIMEOUT_ERROR');
         case 'VALIDATION_ERROR':
-          throw new Error('Invalid payload: missing required field');
+          throw this.createSimulatedError('Invalid payload: missing required field', 'VALIDATION_ERROR');
         case 'RATE_LIMIT_ERROR':
-          throw new Error('Rate limit exceeded: 429 Too Many Requests');
+          throw this.createSimulatedError('Rate limit exceeded: 429 Too Many Requests', 'RATE_LIMIT_ERROR');
         case 'SERVICE_UNAVAILABLE':
-          throw new Error('Service unavailable: 503');
+          throw this.createSimulatedError('Service unavailable: 503', 'SERVICE_UNAVAILABLE');
         default:
-          throw new Error('Unknown error occurred');
+          throw this.createSimulatedError('Unknown error occurred', 'UNKNOWN_ERROR');
       }
     }
 
@@ -139,13 +162,27 @@ class PrimaryProcessor {
       );
 
       // Re-enqueue with delay
-      await queueManager.enqueue(updatedMessage);
+      await queueManager.enqueue(updatedMessage, {
+        delay: decision.delay
+      });
 
       logger.info('Message scheduled for retry', {
         messageId: message.messageId,
         retryCount: updatedMessage.retryCount,
-        delay: decision.delay
+        delay: decision.delay,
+        reason: decision.reason
       });
+
+      await Message.findOneAndUpdate(
+        { messageId: message.messageId },
+        {
+          $set: {
+            status: 'PROCESSING',
+            retryCount: updatedMessage.retryCount,
+            failureReason: error.message
+          }
+        }
+      );
     } catch (error) {
       logger.error('Failed to retry message:', error);
       // If retry fails, route to DLQ
@@ -161,13 +198,25 @@ class PrimaryProcessor {
    */
   async routeToDLQ(message, error, decision) {
     try {
-      await dlqRouter.routeToDLQ(message, error, decision);
+      const result = await dlqRouter.routeToDLQ(message, error, decision);
       
       logger.info('Message routed to DLQ', {
         messageId: message.messageId,
         reason: decision.reason,
-        errorType: decision.errorType
+        errorType: decision.errorType,
+        storage: result.storage
       });
+
+      await Message.findOneAndUpdate(
+        { messageId: message.messageId },
+        {
+          $set: {
+            status: 'DLQ',
+            retryCount: message.retryCount || 0,
+            failureReason: error.message
+          }
+        }
+      );
     } catch (dlqError) {
       logger.error('Failed to route message to DLQ:', dlqError);
       // Critical: message could be lost
@@ -219,6 +268,13 @@ class PrimaryProcessor {
 
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  createSimulatedError(message, code) {
+    const error = new Error(message);
+    error.code = code;
+    error.name = code;
+    return error;
   }
 }
 

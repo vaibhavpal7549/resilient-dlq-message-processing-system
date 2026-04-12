@@ -68,12 +68,23 @@ const dlqMessageSchema = new mongoose.Schema({
     },
     tags: [String],
     requestHeaders: mongoose.Schema.Types.Mixed,
+    policyVersion: String,
+    originalQueue: String,
+    overflowedToUnixSpool: {
+      type: Boolean,
+      default: false
+    },
     systemState: {
       cpuUsage: Number,
       memoryUsage: Number,
       activeConnections: Number,
       queueDepth: Number
     }
+  },
+  debug: {
+    lastErrorName: String,
+    lastErrorCode: String,
+    lastDecision: String
   },
   replayAttempts: [{
     timestamp: Date,
@@ -108,8 +119,6 @@ dlqMessageSchema.index({ errorType: 1, createdAt: -1 });
 // Instance methods
 dlqMessageSchema.methods.addReplayAttempt = function(attempt) {
   this.replayAttempts.push(attempt);
-  this.retryCount += 1;
-  this.dlqRetryCount += 1;
   return this.save();
 };
 
@@ -123,6 +132,15 @@ dlqMessageSchema.methods.markAsResolved = function(resolvedBy, notes) {
 
 dlqMessageSchema.methods.markAsFailed = function() {
   this.status = 'dlq_failed';
+  this.lockedBy = null;
+  this.lockedAt = null;
+  return this.save();
+};
+
+dlqMessageSchema.methods.markAsManual = function() {
+  this.status = 'dlq_manual';
+  this.lockedBy = null;
+  this.lockedAt = null;
   return this.save();
 };
 
@@ -140,11 +158,23 @@ dlqMessageSchema.methods.releaseLock = function() {
   return this.save();
 };
 
+dlqMessageSchema.methods.scheduleRetry = function(nextRetryAt) {
+  this.nextRetryAt = nextRetryAt;
+  this.dlqRetryCount += 1;
+  this.lockedBy = null;
+  this.lockedAt = null;
+  this.status = 'dlq_pending';
+  return this.save();
+};
+
 // Static methods
 dlqMessageSchema.statics.findPendingMessages = function(limit = 10) {
   return this.find({
     status: 'dlq_pending',
-    nextRetryAt: { $lte: new Date() },
+    $or: [
+      { nextRetryAt: { $lte: new Date() } },
+      { nextRetryAt: null }
+    ],
     lockedBy: null
   })
   .sort({ 'metadata.priority': 1, createdAt: 1 })

@@ -12,4 +12,4 @@ RUN npm ci --only=production
 COPY . .
 
 # Start worker
-CMD ["node", "src/dlqWorker.js"]
+CMD ["node", "src/index.js"]
