@@ -1,8 +1,8 @@
-#!/bin/bash
+
 
 DLQ_FILE="dlq.txt"
 
-# Allow an optional DLQ file path as the first argument.
+
 if [ -n "$1" ]; then
   DLQ_FILE="$1"
 fi
