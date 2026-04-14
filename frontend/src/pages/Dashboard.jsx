@@ -79,16 +79,6 @@ async function retryAction(id, setMessages, setLocalOverrides) {
   } catch { /* silently ignore */ }
 }
 
-const SAMPLE_MESSAGES = [
-  { _id: '1', messageId: 'MSG-12345', payload: { description: 'Order #5678 processing failed' }, status: 'dlq_failed', retryCount: 3, _localStatus: 'FAILED' },
-  { _id: '2', messageId: 'MSG-67890', payload: { description: 'User data update timeout' }, status: 'dlq_processing', retryCount: 2, _localStatus: 'RETRIED' },
-  { _id: '3', messageId: 'MSG-54321', payload: { description: 'Payment gateway connection error' }, status: 'dlq_failed', retryCount: 1, _localStatus: 'FAILED' },
-  { _id: '4', messageId: 'MSG-98765', payload: { description: 'Email notification delivered' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
-  { _id: '5', messageId: 'MSG-11223', payload: { description: 'Inventory sync conflict' }, status: 'dlq_failed', retryCount: 4, _localStatus: 'FAILED' },
-  { _id: '6', messageId: 'MSG-33445', payload: { description: 'Log event stream overflow' }, status: 'dlq_processing', retryCount: 1, _localStatus: 'RETRIED' },
-  { _id: '7', messageId: 'MSG-77001', payload: { description: 'Webhook delivery 404 response' }, status: 'dlq_failed', retryCount: 2, _localStatus: 'FAILED' },
-  { _id: '8', messageId: 'MSG-88112', payload: { description: 'Auth token refresh completed' }, status: 'dlq_resolved', retryCount: 0, _localStatus: 'RESOLVED' },
-];
 
 /* ─── inline styles ──────────────────────────────────────── */
 const css = `
@@ -331,10 +321,9 @@ export default function Dashboard() {
         payload: m.payload ?? m.originalMessage,
         _localStatus: mapApiStatus(m.status)
       }));
-      const baseMessages = normalized.length > 0 ? normalized : SAMPLE_MESSAGES;
-      setMessages(baseMessages.map(message => applyLocalOverride(message, localOverrides)));
+      setMessages(normalized.map(message => applyLocalOverride(message, localOverrides)));
     } catch {
-      setMessages(SAMPLE_MESSAGES.map(message => applyLocalOverride(message, localOverrides)));
+      // On error, keep existing messages instead of wiping them out
     }
     setLastUpdated(new Date());
     setLoading(false);

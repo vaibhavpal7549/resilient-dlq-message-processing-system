@@ -1,0 +1,46 @@
+{
+  "messageId": "replay_msg_1776200918871_ba8e6467_1776201218775",
+  "originalMessage": {
+    "orderId": "E2E-FAIL-001",
+    "action": "test_failure",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "External API timeout after 5000ms",
+  "errorStack": "TIMEOUT_ERROR: External API timeout after 5000ms\n    at PrimaryProcessor.createSimulatedError (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:274:19)\n    at PrimaryProcessor.executeBusinessLogic (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:130:22)\n    at async PrimaryProcessor.processMessage (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:49:22)\n    at async D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:22:16\n    at async D:\\dlq\\backend\\src\\queue\\queueManager.js:203:11",
+  "errorType": "TRANSIENT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "firstFailedAt": "2026-04-14T21:13:39.020Z",
+  "lastFailedAt": "2026-04-14T21:13:48.667Z",
+  "status": "dlq_pending",
+  "nextRetryAt": "2026-04-14T21:14:48.667Z",
+  "metadata": {
+    "source": "e2e-test",
+    "priority": 1,
+    "tags": [
+      "e2e",
+      "failure",
+      "manual_replay"
+    ],
+    "requestHeaders": {},
+    "systemState": {
+      "cpuUsage": 0.16426159206418922,
+      "memoryUsage": 0.8294406588119454,
+      "totalMemoryMB": 15710,
+      "usedMemoryMB": 13031,
+      "uptime": 373.1288938,
+      "timestamp": "2026-04-14T21:13:48.667Z"
+    },
+    "policyVersion": "git-tracked-v1",
+    "originalQueue": "message-processing",
+    "overflowedToUnixSpool": true
+  },
+  "debug": {
+    "lastErrorName": "TIMEOUT_ERROR",
+    "lastErrorCode": "TIMEOUT_ERROR",
+    "lastDecision": "MAX_RETRIES_EXCEEDED"
+  },
+  "overflowReason": "circuit-open",
+  "spooledAt": "2026-04-14T21:13:48.667Z"
+}
