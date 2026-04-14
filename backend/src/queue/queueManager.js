@@ -6,6 +6,10 @@ class QueueManager {
   constructor() {
     this.isInitialized = false;
     this.queueName = null;
+    this._consumerTag = null;
+    this._consumeHandler = null;
+    this._concurrency = 1;
+    this._reconnectListenerAttached = false;
   }
 
   async initialize() {
@@ -27,6 +31,32 @@ class QueueManager {
           'x-message-ttl': 86400000 // Messages expire after 24 hours
         }
       });
+
+      // Listen for reconnection events to re-register consumer
+      if (!this._reconnectListenerAttached) {
+        rabbitmqClient.on('reconnected', async (newChannel) => {
+          logger.info('RabbitMQ reconnected — re-initializing queue and consumer');
+          try {
+            // Re-assert queue on new channel
+            await newChannel.assertQueue(this.queueName, {
+              durable: true,
+              arguments: {
+                'x-message-ttl': 86400000
+              }
+            });
+
+            // Re-start consuming if we had a handler registered
+            if (this._consumeHandler) {
+              this._consumerTag = null; // Old tag is stale
+              await this._startConsuming(this._concurrency, this._consumeHandler);
+              logger.info('Consumer re-registered after reconnection');
+            }
+          } catch (err) {
+            logger.error('Failed to re-initialize after reconnection:', err);
+          }
+        });
+        this._reconnectListenerAttached = true;
+      }
 
       this.isInitialized = true;
       logger.info('Queue initialized successfully', { queueName: this.queueName });
@@ -52,21 +82,33 @@ class QueueManager {
         timestamp: Date.now()
       };
 
-      // If delay is specified, use RabbitMQ delayed message via TTL + dead letter
-      // For simplicity, we publish directly (delay is handled by retry scheduling)
+      // For retries with delay: use a single shared delay queue per delay bucket
+      // to avoid creating too many queues on CloudAMQP free plan
       if (options.delay && options.delay > 0) {
-        // Create a temporary queue with TTL that forwards to main queue
-        const delayQueue = `${this.queueName}.delay.${options.delay}`;
-        await channel.assertQueue(delayQueue, {
-          durable: true,
-          arguments: {
-            'x-dead-letter-exchange': '',
-            'x-dead-letter-routing-key': this.queueName,
-            'x-message-ttl': options.delay,
-            'x-expires': options.delay + 60000 // Auto-delete queue after TTL + 1 min
-          }
-        });
-        channel.sendToQueue(delayQueue, messageBuffer, publishOptions);
+        // Round delay to nearest bucket to reduce queue count
+        // Buckets: 1s, 2s, 5s, 10s, 30s, 60s
+        const bucketedDelay = this._bucketDelay(options.delay);
+        const delayQueue = `${this.queueName}.delay.${bucketedDelay}`;
+
+        try {
+          await channel.assertQueue(delayQueue, {
+            durable: true,
+            arguments: {
+              'x-dead-letter-exchange': '',
+              'x-dead-letter-routing-key': this.queueName,
+              'x-message-ttl': bucketedDelay,
+              'x-expires': bucketedDelay + 300000 // Auto-delete queue after TTL + 5 min
+            }
+          });
+          channel.sendToQueue(delayQueue, messageBuffer, publishOptions);
+        } catch (delayErr) {
+          // If delay queue fails (e.g., CloudAMQP limits), fall back to direct enqueue
+          logger.warn('Delay queue failed, enqueueing directly', {
+            messageId: message.messageId,
+            error: delayErr.message
+          });
+          channel.sendToQueue(this.queueName, messageBuffer, publishOptions);
+        }
       } else {
         channel.sendToQueue(this.queueName, messageBuffer, publishOptions);
       }
@@ -81,6 +123,18 @@ class QueueManager {
       logger.error('Failed to enqueue message:', error);
       throw error;
     }
+  }
+
+  /**
+   * Bucket delay values to reduce the number of unique delay queues created.
+   * This is important for CloudAMQP free plan which limits queue count.
+   */
+  _bucketDelay(delay) {
+    const buckets = [1000, 2000, 5000, 10000, 30000, 60000];
+    for (const bucket of buckets) {
+      if (delay <= bucket) return bucket;
+    }
+    return 60000; // Max bucket
   }
 
   async getQueueMetrics() {
@@ -114,8 +168,10 @@ class QueueManager {
       pause: async () => {
         // Cancel consumer to pause
         if (this._consumerTag) {
-          const channel = rabbitmqClient.getChannel();
-          await channel.cancel(this._consumerTag);
+          try {
+            const channel = rabbitmqClient.getChannel();
+            await channel.cancel(this._consumerTag);
+          } catch { /* channel may be closed */ }
           this._consumerTag = null;
         }
       },

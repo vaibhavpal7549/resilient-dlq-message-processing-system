@@ -1,13 +1,16 @@
 const amqp = require('amqplib');
+const EventEmitter = require('events');
 const logger = require('../utils/logger').createComponentLogger('rabbitmq');
 const config = require('../utils/config');
 
-class RabbitMQClient {
+class RabbitMQClient extends EventEmitter {
   constructor() {
+    super();
     this.connection = null;
     this.channel = null;
     this.isConnected = false;
     this._reconnectTimer = null;
+    this._intentionalClose = false;
   }
 
   async connect() {
@@ -16,6 +19,10 @@ class RabbitMQClient {
         logger.info('RabbitMQ already connected');
         return this.channel;
       }
+
+      // Clean up any stale references
+      this.channel = null;
+      this.isConnected = false;
 
       const url = config.rabbitmq.url;
       logger.info('Connecting to RabbitMQ...', {
@@ -32,7 +39,10 @@ class RabbitMQClient {
       this.connection.on('close', () => {
         logger.warn('RabbitMQ connection closed');
         this.isConnected = false;
-        this._scheduleReconnect();
+        this.channel = null;
+        if (!this._intentionalClose) {
+          this._scheduleReconnect();
+        }
       });
 
       this.channel = await this.connection.createChannel();
@@ -43,10 +53,21 @@ class RabbitMQClient {
 
       this.channel.on('close', () => {
         logger.warn('RabbitMQ channel closed');
+        this.channel = null;
+        this.isConnected = false;
+        // Channel can die independently of connection (e.g., CloudAMQP limits)
+        // Schedule reconnect to get a fresh channel
+        if (!this._intentionalClose) {
+          this._scheduleReconnect();
+        }
       });
 
       this.isConnected = true;
       logger.info('RabbitMQ connected successfully');
+
+      // Emit 'reconnected' so queueManager can re-register consumer
+      this.emit('reconnected', this.channel);
+
       return this.channel;
 
     } catch (error) {
@@ -58,11 +79,24 @@ class RabbitMQClient {
 
   _scheduleReconnect() {
     if (this._reconnectTimer) return;
+    logger.info('Scheduling RabbitMQ reconnection in 5 seconds...');
     this._reconnectTimer = setTimeout(async () => {
       this._reconnectTimer = null;
       try {
+        // Force-clean stale connection before reconnecting
+        try {
+          if (this.connection) {
+            this.connection.removeAllListeners();
+            await this.connection.close().catch(() => {});
+          }
+        } catch { /* ignore cleanup errors */ }
+        this.connection = null;
+        this.channel = null;
+        this.isConnected = false;
+
         logger.info('Attempting RabbitMQ reconnection...');
         await this.connect();
+        logger.info('RabbitMQ reconnection successful');
       } catch (err) {
         logger.error('RabbitMQ reconnection failed:', err);
         this._scheduleReconnect();
@@ -72,6 +106,8 @@ class RabbitMQClient {
 
   async disconnect() {
     try {
+      this._intentionalClose = true;
+
       if (this._reconnectTimer) {
         clearTimeout(this._reconnectTimer);
         this._reconnectTimer = null;

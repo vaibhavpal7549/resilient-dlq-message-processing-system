@@ -1,0 +1,51 @@
+{
+  "messageId": "msg_1776198569564_c5f0a929",
+  "originalMessage": {
+    "orderId": "Checke542",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "External API timeout after 5000ms",
+  "errorStack": "TIMEOUT_ERROR: External API timeout after 5000ms\n    at PrimaryProcessor.createSimulatedError (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:274:19)\n    at PrimaryProcessor.executeBusinessLogic (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:130:22)\n    at async PrimaryProcessor.processMessage (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:49:22)\n    at async D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:22:16\n    at async D:\\dlq\\backend\\src\\queue\\queueManager.js:147:11",
+  "errorType": "TRANSIENT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "firstFailedAt": "2026-04-14T20:45:10.330Z",
+  "lastFailedAt": "2026-04-14T20:45:18.513Z",
+  "status": "dlq_pending",
+  "nextRetryAt": "2026-04-14T20:46:18.513Z",
+  "metadata": {
+    "source": "order-service",
+    "priority": 2,
+    "tags": [],
+    "requestHeaders": {
+      "content-type": "application/json",
+      "user-agent": "PostmanRuntime/7.53.0",
+      "accept": "*/*",
+      "postman-token": "0b75186a-cc39-4ae6-9438-4afc466e4941",
+      "host": "localhost:3000",
+      "accept-encoding": "gzip, deflate, br",
+      "connection": "keep-alive",
+      "content-length": "146",
+      "cookie": "esp_csrftoken=m3t6rrYnjQLFFbv8i79nm2Hu4iZke3qo4v1TPclHQhpavnYVl7lSnSsBiluCV3eL; jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5ZDYwN2RlZTA3NTY4ZTFmZmI0NzA3NyIsImlhdCI6MTc3NTYzODUxMiwiZXhwIjoxNzgzNDE0NTEyfQ.J8KEjigI4lzjD0QftrGOg1Lbl87TwWAwx6Y4jH4tKpU"
+    },
+    "systemState": {
+      "cpuUsage": 0.16406359549459149,
+      "memoryUsage": 0.6667676168666401,
+      "totalMemoryMB": 15710,
+      "usedMemoryMB": 10475,
+      "uptime": 10.6552031,
+      "timestamp": "2026-04-14T20:45:18.513Z"
+    },
+    "policyVersion": "git-tracked-v1",
+    "originalQueue": "message-processing",
+    "overflowedToUnixSpool": true
+  },
+  "debug": {
+    "lastErrorName": "TIMEOUT_ERROR",
+    "lastErrorCode": "TIMEOUT_ERROR",
+    "lastDecision": "MAX_RETRIES_EXCEEDED"
+  },
+  "overflowReason": "circuit-open",
+  "spooledAt": "2026-04-14T20:45:18.513Z"
+}
