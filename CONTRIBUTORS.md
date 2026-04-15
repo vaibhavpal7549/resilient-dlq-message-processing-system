@@ -7,54 +7,66 @@ and ideas to make it better. 🚀
 
 ## Project Maintainer
 
-- **Vaibhav Pal**  
+- **Vaibhav Pal** [@vaibhavpal7549](https://github.com/vaibhavpal7549)  
   Role: Project Maintainer & Core Developer  
   Responsibilities:
-  - System design and architecture
-  - Backend and worker service development
-  - Dead Letter Queue implementation
-  - Repository management and documentation
+  - System design and overall architecture
+  - Redis → RabbitMQ migration (amqplib integration)
+  - Backend API development (Express, REST endpoints)
+  - RabbitMQ queue manager with delay bucketing & resilient reconnection
+  - Circuit breaker pattern implementation
+  - Retry logic with exponential backoff
+  - DLQ routing & Unix spool fallback mechanism
+  - Message processor service layer
+  - Frontend application scaffolding (React + Vite)
+  - CI/CD scripts, Docker configuration & deployment guide
+  - Repository management, documentation & project coordination
 
 ---
 
 ## Contributors
 
-We welcome contributions from the community.  
-All contributors who submit valid pull requests will be acknowledged here.
+- **Vaibhav Singh** [@vaibhavsingh056](https://github.com/vaibhavsingh056)  
+  Contribution: DLQ Worker Service & MongoDB Layer  
+  - DLQ worker service with RabbitMQ consumer (amqplib)
+  - MongoDB schema design & database integration
+  - Fetch & process DLQ messages
+  - Retry strategies (fixed, exponential, linear backoff)
+  - Failure classification & error logging (reason, timestamps)
+  - Worker health monitoring & graceful shutdown
+  - Branch: `dlq-worker`
 
-(Your name will appear here once your contribution is merged.)
+- **Utkarsh Upadhyay** [@utkarshupadhyay249-commits](https://github.com/utkarshupadhyay249-commits)  
+  Contribution: Circuit Breaker + Shell Scripts + Unix MQ  
+  - Circuit breaker logic with failure rate calculation
+  - Blocking DLQ input when error threshold exceeded
+  - Shell scripts for DLQ replay & resolution (`replay-dlq.sh`, `replay-all-failed-dlq.sh`, `resolve-dlq-message.sh`)
+  - Unix message queue demo (`unix_queue_demo.sh`)
+  - Branch: `circuit-breaker-scripts`
 
-## Contributors
+- **Vaishnavi Rajpoot** [@Vaishnavi-18110](https://github.com/Vaishnavi-18110)  
+  Contribution: Frontend Dashboard + API Documentation  
+  - DLQ dashboard UI with status filters (failed / retried / resolved)
+  - API to fetch & display DLQ data
+  - Status monitoring dashboard
+  - API documentation (`API_DOCUMENTATION.md`)
+  - README & architecture diagram explanations
+  - Branch: `dlq-dashboard`
 
-- **Vaibhav Singh** [@vaibhavsingh056](https://github.com/vaibhavsingh056)
- 
-  Contribution: DLQ Worker & MongoDB Layer
-  - DLQ schema (MongoDB)
-  - Node.js DLQ worker service
-  - Fetch DLQ messages
-  - Extra retry + failure classification
-  - Logging (error reason, timestamps)
-  - Separate branch: dlq-worker
+---
 
-- **Utkarsh Upadhyay** [@utkarshupadhyay249-commits](https://github.com/utkarshupadhyay249-commits)
- 
-  Contribution: Circuit Breaker + Shell Scripts + Unix MQ
-  - Circuit breaker logic
-  - Failure rate calculation
-  - Blocking DLQ input when threshold exceeded
-  - Shell scripts for replay
-  - Unix message queue usage (basic)
-  - Branch: circuit-breaker-scripts
-  - Separate commits for: Circuit breaker , Replay scripts
+## Tech Stack (Current)
 
-- **Vaishnavi Rajpoot** [@Vaishnavi-18110](https://github.com/Vaishnavi-18110)
- 
-  Contribution: Frontend + Monitoring + Documentation
-  - Simple UI to view DLQ messages
-  - API to fetch DLQ data
-  - Status dashboard (failed / retried / resolved)
-  - README + diagrams explanation
-  - API documentation
+| Layer       | Technology                              |
+|-------------|-----------------------------------------|
+| Backend API | Node.js, Express, Helmet, CORS          |
+| Message Queue | RabbitMQ (amqplib)                    |
+| Database    | MongoDB (Mongoose)                      |
+| Worker      | Node.js, amqplib, Winston               |
+| Frontend    | React, Vite, TailwindCSS                |
+| Monitoring  | prom-client (Prometheus), Winston logs   |
+| Testing     | Jest, Supertest                         |
+| Scripts     | Bash, PowerShell, Node.js CLI           |
 
 ---
 
