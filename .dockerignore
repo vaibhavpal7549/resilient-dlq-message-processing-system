@@ -1,0 +1,16 @@
+# ===========================================
+# .dockerignore - applies to frontend build
+# (build context is project root)
+# ===========================================
+
+# Exclude everything by default
+*
+
+# Include only what the frontend Dockerfile needs
+!frontend/
+!docker/nginx.conf
+
+# Re-exclude unnecessary files from frontend
+frontend/node_modules
+frontend/dist
+frontend/.env*
