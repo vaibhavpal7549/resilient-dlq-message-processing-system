@@ -15,18 +15,22 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7.0-alpine
-    container_name: dlq-redis
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: dlq-rabbitmq
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
     volumes:
-      - redis_data:/data
+      - rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
 
   backend:
@@ -40,10 +44,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MONGODB_URI=mongodb://mongodb:27017/dlq_system
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_DB=0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - QUEUE_NAME=message-processing
       - LOG_LEVEL=info
       - DLQ_POLICY_VERSION=git-tracked-v2
@@ -53,7 +54,7 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      redis:
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     volumes:
@@ -70,10 +71,7 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongodb:27017/dlq_system
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_DB=0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - QUEUE_NAME=message-processing
       - LOG_LEVEL=info
       - DLQ_POLL_INTERVAL_MS=30000
@@ -84,7 +82,7 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      redis:
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     volumes:
@@ -107,4 +105,4 @@ services:
 
 volumes:
   mongodb_data:
-  redis_data:
+  rabbitmq_data:
