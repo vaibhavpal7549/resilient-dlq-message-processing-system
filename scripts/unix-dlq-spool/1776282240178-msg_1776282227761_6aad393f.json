@@ -1,0 +1,51 @@
+{
+  "messageId": "msg_1776282227761_6aad393f",
+  "originalMessage": {
+    "orderId": "Internet Gone Away",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "External API timeout after 5000ms",
+  "errorStack": "TIMEOUT_ERROR: External API timeout after 5000ms\n    at PrimaryProcessor.createSimulatedError (/app/src/processor/primaryProcessor.js:274:19)\n    at PrimaryProcessor.executeBusinessLogic (/app/src/processor/primaryProcessor.js:130:22)\n    at async PrimaryProcessor.processMessage (/app/src/processor/primaryProcessor.js:49:22)\n    at async /app/src/processor/primaryProcessor.js:22:16\n    at async /app/src/queue/queueManager.js:203:11",
+  "errorType": "TRANSIENT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "firstFailedAt": "2026-04-15T19:43:47.838Z",
+  "lastFailedAt": "2026-04-15T19:44:00.177Z",
+  "status": "dlq_pending",
+  "nextRetryAt": "2026-04-15T19:45:00.177Z",
+  "metadata": {
+    "source": "order-service",
+    "priority": 2,
+    "tags": [],
+    "requestHeaders": {
+      "content-type": "application/json",
+      "user-agent": "PostmanRuntime/7.53.0",
+      "accept": "*/*",
+      "postman-token": "e14557cd-0049-48fc-a40f-66f1bc247161",
+      "host": "localhost:3000",
+      "accept-encoding": "gzip, deflate, br",
+      "connection": "keep-alive",
+      "content-length": "155",
+      "cookie": "esp_csrftoken=m3t6rrYnjQLFFbv8i79nm2Hu4iZke3qo4v1TPclHQhpavnYVl7lSnSsBiluCV3eL; jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5ZDYwN2RlZTA3NTY4ZTFmZmI0NzA3NyIsImlhdCI6MTc3NTYzODUxMiwiZXhwIjoxNzgzNDE0NTEyfQ.J8KEjigI4lzjD0QftrGOg1Lbl87TwWAwx6Y4jH4tKpU"
+    },
+    "systemState": {
+      "cpuUsage": 0.04150652494770479,
+      "memoryUsage": 0.21208184925530932,
+      "totalMemoryMB": 7611,
+      "usedMemoryMB": 1614,
+      "uptime": 1108.000793514,
+      "timestamp": "2026-04-15T19:44:00.177Z"
+    },
+    "policyVersion": "git-tracked-v2",
+    "originalQueue": "message-processing",
+    "overflowedToUnixSpool": true
+  },
+  "debug": {
+    "lastErrorName": "TIMEOUT_ERROR",
+    "lastErrorCode": "TIMEOUT_ERROR",
+    "lastDecision": "MAX_RETRIES_EXCEEDED"
+  },
+  "overflowReason": "circuit-open",
+  "spooledAt": "2026-04-15T19:44:00.178Z"
+}

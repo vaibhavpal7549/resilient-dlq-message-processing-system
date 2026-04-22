@@ -1,0 +1,43 @@
+{
+  "messageId": "replay_msg_1776282215953_6410957a_1776282581166",
+  "originalMessage": {
+    "orderId": "Internet Slow Down",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "External API timeout after 5000ms",
+  "errorStack": "TIMEOUT_ERROR: External API timeout after 5000ms\n    at PrimaryProcessor.createSimulatedError (/app/src/processor/primaryProcessor.js:274:19)\n    at PrimaryProcessor.executeBusinessLogic (/app/src/processor/primaryProcessor.js:130:22)\n    at async PrimaryProcessor.processMessage (/app/src/processor/primaryProcessor.js:49:22)\n    at async /app/src/processor/primaryProcessor.js:22:16\n    at async /app/src/queue/queueManager.js:203:11",
+  "errorType": "TRANSIENT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "firstFailedAt": "2026-04-15T19:49:41.301Z",
+  "lastFailedAt": "2026-04-15T19:49:54.017Z",
+  "status": "dlq_pending",
+  "nextRetryAt": "2026-04-15T19:50:54.017Z",
+  "metadata": {
+    "source": "order-service",
+    "priority": 2,
+    "tags": [
+      "manual_replay"
+    ],
+    "requestHeaders": {},
+    "systemState": {
+      "cpuUsage": 0.04305016477480772,
+      "memoryUsage": 0.21834628373176765,
+      "totalMemoryMB": 7611,
+      "usedMemoryMB": 1662,
+      "uptime": 1424.969778192,
+      "timestamp": "2026-04-15T19:49:54.017Z"
+    },
+    "policyVersion": "git-tracked-v2",
+    "originalQueue": "message-processing",
+    "overflowedToUnixSpool": true
+  },
+  "debug": {
+    "lastErrorName": "TIMEOUT_ERROR",
+    "lastErrorCode": "TIMEOUT_ERROR",
+    "lastDecision": "MAX_RETRIES_EXCEEDED"
+  },
+  "overflowReason": "circuit-open",
+  "spooledAt": "2026-04-15T19:49:54.017Z"
+}

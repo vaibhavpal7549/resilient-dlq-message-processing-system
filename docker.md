@@ -264,3 +264,5 @@ All environment variables are pre-configured in `docker-compose.yml` for local d
 
 > [!NOTE]
 > Docker containers use internal service names (e.g., `mongodb`, `rabbitmq`) for networking. These are automatically resolved by Docker's internal DNS.
+>
+> The frontend container is served by Nginx on internal port `80`, which is published as `http://localhost:5173`. In Docker, frontend API requests use the same origin and are proxied by Nginx to the backend service.

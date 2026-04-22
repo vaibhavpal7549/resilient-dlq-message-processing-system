@@ -1,0 +1,43 @@
+{
+  "messageId": "replay_msg_1776397851085_39050ef0_1776397888583",
+  "originalMessage": {
+    "orderId": "Network error",
+    "simulateError": true,
+    "errorType": "TIMEOUT_ERROR"
+  },
+  "errorReason": "External API timeout after 5000ms",
+  "errorStack": "TIMEOUT_ERROR: External API timeout after 5000ms\n    at PrimaryProcessor.createSimulatedError (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:274:19)\n    at PrimaryProcessor.executeBusinessLogic (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:130:22)\n    at async PrimaryProcessor.processMessage (D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:49:22)\n    at async D:\\dlq\\backend\\src\\processor\\primaryProcessor.js:22:16\n    at async D:\\dlq\\backend\\src\\queue\\queueManager.js:203:11",
+  "errorType": "TRANSIENT_ERROR",
+  "retryCount": 3,
+  "dlqRetryCount": 0,
+  "firstFailedAt": "2026-04-17T03:51:30.372Z",
+  "lastFailedAt": "2026-04-17T03:51:44.358Z",
+  "status": "dlq_pending",
+  "nextRetryAt": "2026-04-17T03:52:44.358Z",
+  "metadata": {
+    "source": "order-service",
+    "priority": 2,
+    "tags": [
+      "manual_replay"
+    ],
+    "requestHeaders": {},
+    "systemState": {
+      "cpuUsage": 0.1314030904328265,
+      "memoryUsage": 0.7406586876225357,
+      "totalMemoryMB": 15710,
+      "usedMemoryMB": 11636,
+      "uptime": 3489.4791933,
+      "timestamp": "2026-04-17T03:51:44.358Z"
+    },
+    "policyVersion": "git-tracked-v1",
+    "originalQueue": "message-processing",
+    "overflowedToUnixSpool": true
+  },
+  "debug": {
+    "lastErrorName": "TIMEOUT_ERROR",
+    "lastErrorCode": "TIMEOUT_ERROR",
+    "lastDecision": "MAX_RETRIES_EXCEEDED"
+  },
+  "overflowReason": "circuit-open",
+  "spooledAt": "2026-04-17T03:51:44.359Z"
+}
